@@ -48,30 +48,37 @@ if __name__ == "__main__":
             # Find out more about the parameters, introducing special
             # conversions where appropriate.
 
-            parameters = [("self", None)]
+            parameter_names = ["self"]
             parameter_index = 1
+            conversions = []
+
             for parameter in method.get_descriptor()[0]:
+                parameter_name = "p" + str(parameter_index)
                 base_type, object_type, array_type = parameter
+
+                # Special cases.
+
                 if object_type == "java/lang/String":
-                    parameters.append(("p" + str(parameter_index), "unicode"))
-                else:
-                    parameters.append(("p" + str(parameter_index), None))
+                    conversions.append("%s = unicode(%s)" % (parameter_name, parameter_name))
+                # elif object_type == "java/util/Map":
+                    # NOTE: Using special private interface.
+                    # conversions.append("%s = %s.as_dict()" % (parameter_name, parameter_name))
+
+                parameter_names.append(parameter_name)
                 parameter_index += 1
 
             # Write the signature.
 
-            parameter_names = ", ".join([t[0] for t in parameters])
-            f.write("    def %s(%s):\n" % (wrapped_method_name, parameter_names))
+            f.write("    def %s(%s):\n" % (wrapped_method_name, ", ".join(parameter_names)))
 
             # Write any conversions.
 
-            for parameter_name, conversion in parameters:
-                if conversion:
-                    f.write("        %s = %s(%s)\n" % (parameter_name, conversion, parameter_name))
+            for conversion in conversions:
+                f.write("        %s\n" % conversion)
 
             # Write the call to the wrapped method.
 
-            f.write("        return %s.%s.%s(%s)\n" % (package, class_name, wrapped_method_name, parameter_names))
+            f.write("        return %s.%s.%s(%s)\n" % (package, class_name, wrapped_method_name, ", ".join(parameter_names)))
 
             # Record the correspondence between the Java-accessible and wrapped
             # method names.
