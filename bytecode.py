@@ -377,6 +377,12 @@ class BytecodeWriter:
         self._write_value(count)
         self.update_stack_depth(-count)
 
+    def call_function_var(self, count):
+        self.output.append(opmap["CALL_FUNCTION_VAR"])
+        self.position += 1
+        self._write_value(count)
+        self.update_stack_depth(-count-1)
+
     def binary_subscr(self):
         self.output.append(opmap["BINARY_SUBSCR"])
         self.position += 1
@@ -1140,8 +1146,10 @@ class BytecodeTranslator(BytecodeReader):
     def getstatic(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
-        program.load_name("self")
-        program.load_attr("__class__")
+        # Get the class name instead of the fully qualified name.
+        full_class_name = str(self.class_file.this_class.get_python_name())
+        class_name = full_class_name.split(".")[-1]
+        program.load_global(class_name) # Stack: classref
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name))
 
@@ -1322,9 +1330,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name)) # Stack: tuple, method
         program.rot_two()                   # Stack: method, tuple
-        program.load_global("apply")        # Stack: method, tuple, apply
-        program.rot_three()                 # Stack: apply, method, tuple
-        program.call_function(2)
+        program.call_function_var(0)        # Stack: result
 
     def invokeinterface(self, arguments, program):
         # NOTE: This implementation does not perform the necessary checks for
@@ -1347,6 +1353,7 @@ class BytecodeTranslator(BytecodeReader):
         target = self.class_file.constants[index - 1]
         original_name = target.get_name()
         target_name = target.get_python_name()
+        method_name = self.method.get_name()
 
         # Get the number of parameters from the descriptor.
 
@@ -1371,11 +1378,11 @@ class BytecodeTranslator(BytecodeReader):
         program.dup_top()               # Stack: tuple, tuple
         program.load_const(0)           # Stack: tuple, tuple, 0
         program.binary_subscr()         # Stack: tuple, reference
-        program.dup_top()               # Stack: tuple, reference, reference
 
         # Is it self?
 
-        program.load_fast(0)            # Stack: tuple, reference, reference, self
+        program.dup_top()               # Stack: tuple, reference, reference
+        program.load_fast(0)            # Stack: tuple, reference, reference, self|cls
         program.compare_op("is")        # Stack: tuple, reference, result
         program.jump_to_label(1, "is-self")
         program.pop_top()               # Stack: tuple, reference
@@ -1387,9 +1394,7 @@ class BytecodeTranslator(BytecodeReader):
             program.rot_two()               # Stack: reference, tuple
             program.load_const(1)           # Stack: reference, tuple, 1
             program.slice_1()               # Stack: reference, tuple[1:]
-            program.load_global("apply")    # Stack: reference, tuple, apply
-            program.rot_three()             # Stack: apply, reference, tuple
-            program.call_function(2)
+            program.call_function_var(0)    # Stack: result
             # NOTE: Combinations of new, dup tend to produce interfering extra
             # NOTE: class references.
             program.rot_two()               # Stack: objectref, classref
@@ -1400,6 +1405,7 @@ class BytecodeTranslator(BytecodeReader):
             program.jump_to_label(None, "done")
 
         # Is self.
+
         program.start_label("is-self")
         program.pop_top()               # Stack: tuple, reference
         program.pop_top()               # Stack: tuple
@@ -1426,6 +1432,7 @@ class BytecodeTranslator(BytecodeReader):
         program.pop_top()               # Stack: tuple, bases
         program.pop_top()               # Stack: tuple
         program.pop_top()               # Stack:
+
         program.start_label("done")
 
     def invokestatic(self, arguments, program):
@@ -1440,8 +1447,11 @@ class BytecodeTranslator(BytecodeReader):
         # Stack: arg1, arg2, ...
         program.build_tuple(count)      # Stack: tuple
         # Use the class to provide access to static methods.
-        program.load_name("self")       # Stack: tuple, self
-        program.load_attr("__class__")  # Stack: tuple, class
+        # Get the class name instead of the fully qualified name.
+        # NOTE: Need to find the class that declared the field being accessed.
+        full_class_name = str(self.class_file.this_class.get_python_name())
+        class_name = full_class_name.split(".")[-1]
+        program.load_global(class_name) # Stack: tuple, classref
         self._invoke(target_name, program)
 
     def invokevirtual (self, arguments, program):
@@ -1697,8 +1707,11 @@ class BytecodeTranslator(BytecodeReader):
     def putstatic(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
-        program.load_name("self")
-        program.load_attr("__class__")
+        # Get the class name instead of the fully qualified name.
+        # NOTE: Need to find the class that declared the field being accessed.
+        full_class_name = str(self.class_file.this_class.get_python_name())
+        class_name = full_class_name.split(".")[-1]
+        program.load_global(class_name) # Stack: classref
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.store_attr(str(target_name))
 
@@ -1851,9 +1864,7 @@ class ClassTranslator:
             program.build_tuple(3)                  # Stack: arguments, tuple
             program.load_global("map")              # Stack: arguments, tuple, map
             program.rot_two()                       # Stack: arguments, map, tuple
-            program.load_global("apply")            # Stack: arguments, map, tuple, apply
-            program.rot_three()                     # Stack: arguments, apply, map, tuple
-            program.call_function(2)                # Stack: arguments, list (mapping arguments to types)
+            program.call_function_var(0)            # Stack: arguments, list (mapping arguments to types)
             # Loop over each pair.
             program.get_iter()                      # Stack: arguments, iter
             program.for_iter()                      # Stack: arguments, iter, (argument, type)
@@ -1890,9 +1901,7 @@ class ClassTranslator:
             program.build_tuple(2)                  # Stack: arguments, iter, (argument, type)
             program.load_global("isinstance")       # Stack: arguments, iter, (argument, type), isinstance
             program.rot_two()                       # Stack: arguments, iter, isinstance, (argument, type)
-            program.load_global("apply")            # Stack: arguments, iter, isinstance, (argument, type), apply
-            program.rot_three()                     # Stack: arguments, iter, apply, isinstance, (argument, type)
-            program.call_function(2)                # Stack: arguments, iter, result
+            program.call_function_var(0)            # Stack: arguments, iter, result
             program.jump_to_label(1, "match")
             program.pop_top()                       # Stack: arguments, iter
             program.load_const(0)                   # Stack: arguments, iter, 0
@@ -1912,9 +1921,7 @@ class ClassTranslator:
             program.load_attr(str(method.get_python_name()))
                                                     # Stack: arguments, arguments, method
             program.rot_two()                       # Stack: arguments, method, arguments
-            program.load_global("apply")            # Stack: arguments, method, arguments, apply
-            program.rot_three()                     # Stack: arguments, apply, method, arguments
-            program.call_function(2)                # Stack: arguments, result
+            program.call_function_var(0)            # Stack: arguments, result
             program.return_value()
             # Try the next method if arguments or parameters were missing or incorrect.
             program.start_label("failed")
@@ -1946,26 +1953,55 @@ class ClassTranslator:
         """
 
         namespace = {}
+
+        # Make the fields.
+
+        for field in self.class_file.fields:
+            if classfile.has_flags(field.access_flags, [classfile.STATIC]):
+                field_name = str(field.get_python_name())
+                namespace[field_name] = None
+
+        # Make the methods.
+
         real_methods = {}
         for method in self.class_file.methods:
+            real_method_name = str(method.get_name())
             t, w = self.translate_method(method)
+
+            # Fix up special class initialisation methods.
+
+            if real_method_name == "<clinit>":
+                flags = 3
+            else:
+                flags = 67
             nlocals = w.max_locals + 1
             nargs = len(method.get_descriptor()[0]) + 1
+
             method_name = str(method.get_python_name())
 
             # NOTE: Add line number table later.
 
-            code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
+            code = new.code(nargs, nlocals, w.max_stack_depth, flags, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
                 tuple(self.make_varnames(nlocals)), self.filename, method_name, 0, "")
 
             # NOTE: May need more globals.
 
             fn = new.function(code, global_names)
-            namespace[method_name] = fn
-            real_method_name = str(method.get_name())
+
+            # Remember the real method name and the corresponding methods produced.
+
             if not real_methods.has_key(real_method_name):
                 real_methods[real_method_name] = []
             real_methods[real_method_name].append((method, fn))
+
+            # Fix up special class initialisation methods.
+
+            if real_method_name == "<clinit>":
+                fn = classmethod(fn)
+
+            # Add the method to the class's namespace.
+
+            namespace[method_name] = fn
 
         # Define superclasses.
 
@@ -1974,7 +2010,8 @@ class ClassTranslator:
         # Define method dispatchers.
 
         for real_method_name, methods in real_methods.items():
-            self.make_method(real_method_name, methods, global_names, namespace)
+            if real_method_name != "<clinit>":
+                self.make_method(real_method_name, methods, global_names, namespace)
 
         # Use only the last part of the fully qualified name.
 
@@ -1982,6 +2019,7 @@ class ClassTranslator:
         class_name = full_class_name.split(".")[-1]
         cls = new.classobj(class_name, bases, namespace)
         global_names[cls.__name__] = cls
+
         return cls
 
     def get_base_classes(self, global_names):
@@ -1999,15 +2037,16 @@ class ClassTranslator:
         else:
             full_class_name = str(self.class_file.super_class.get_python_name())
             class_name_parts = full_class_name.split(".")
+            class_name = class_name_parts[-1]
             class_module_name = ".".join(class_name_parts[:-1])
             if class_module_name == "":
-                class_module_name = "__this__"
-            class_name = class_name_parts[-1]
-            print "Importing", class_module_name, class_name
-            obj = __import__(class_module_name, global_names, {}, [])
-            for class_name_part in class_name_parts[1:] or [class_name]:
-                print "*", obj, class_name_part
-                obj = getattr(obj, class_name_part)
+                obj = global_names[class_name]
+            else:
+                print "Importing", class_module_name, class_name
+                obj = __import__(class_module_name, global_names, {}, [])
+                for class_name_part in class_name_parts[1:] or [class_name]:
+                    print "*", obj, class_name_part
+                    obj = getattr(obj, class_name_part)
             return (obj,)
 
     def make_varnames(self, nlocals):
@@ -2034,8 +2073,7 @@ def _isinstance(*args):
 if __name__ == "__main__":
     import sys
     import dis
-    global_names = {}
-    global_names.update(__builtins__.__dict__)
+    global_names = globals()
     #global_names["isinstance"] = _isinstance
     #global_names["map"] = _map
     for filename in sys.argv[1:]:

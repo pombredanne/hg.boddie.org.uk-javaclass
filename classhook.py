@@ -88,26 +88,68 @@ class ClassLoader(ihooks.ModuleLoader):
 
         print "Loading", file, filename, info
 
-        # Prepare a dictionary of globals.
-
-        global_names = {}
-        global_names.update(__builtins__.__dict__)
-
         # Set up the module.
 
         module = self.hooks.add_module(name)
         module.__path__ = [filename]
 
+        # Prepare a dictionary of globals.
+
+        global_names = module.__dict__
+        global_names["__builtins__"] = __builtins__
+
         # Process each class file, producing a genuine Python class.
 
         class_files = []
         classes = []
+
+        # Load the class files.
+
+        class_files = {}
         for class_filename in glob.glob(os.path.join(filename, "*" + os.extsep + "class")):
-            print "Importing class", class_filename
+            print "Loading class", class_filename
             f = open(class_filename, "rb")
             s = f.read()
             f.close()
             class_file = classfile.ClassFile(s)
+            class_files[str(class_file.this_class.get_name())] = class_file
+
+        # Get an index of the class files.
+
+        class_file_index = class_files.keys()
+
+        # NOTE: Unnecessary sorting for test purposes.
+
+        class_file_index.sort()
+
+        # Now go through the classes arranging them in a safe loading order.
+
+        position = 0
+        while position < len(class_file_index):
+            class_name = class_file_index[position]
+            super_class_name = str(class_files[class_name].super_class.get_name())
+
+            # Discover whether the superclass appears later.
+
+            try:
+                super_class_position = class_file_index.index(super_class_name)
+                if super_class_position > position:
+
+                    # If the superclass appears later, swap this class and the
+                    # superclass, then process the superclass.
+
+                    class_file_index[position] = super_class_name
+                    class_file_index[super_class_position] = class_name
+                    continue
+
+            except ValueError:
+                pass
+
+            position += 1
+
+        class_files = [class_files[class_name] for class_name in class_file_index]
+
+        for class_file in class_files:
             translator = bytecode.ClassTranslator(class_file)
             cls = translator.process(global_names)
             module.__dict__[cls.__name__] = cls
@@ -115,9 +157,9 @@ class ClassLoader(ihooks.ModuleLoader):
 
         # Finally, call __clinit__ methods for all relevant classes.
 
-        #for cls in classes:
-        #    if hasattr(cls, "__clinit__"):
-        #        cls.__clinit__()
+        for cls in classes:
+            if hasattr(cls, "__clinit__"):
+                cls.__clinit__()
 
         return module
 
