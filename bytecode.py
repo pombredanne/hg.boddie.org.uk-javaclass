@@ -395,6 +395,10 @@ class BytecodeWriter:
         self.position += 1
         self.update_stack_depth(-1)
 
+    def unary_negative(self):
+        self.output.append(opmap["UNARY_NEGATIVE"])
+        self.position += 1
+
     def compare_op(self, op):
         self.output.append(opmap["COMPARE_OP"])
         self.position += 1
@@ -1263,7 +1267,8 @@ class BytecodeTranslator(BytecodeReader):
         count = len(target.get_descriptor()[0])
 
         # Check for the method name and invoke superclasses where appropriate.
-        if str(self.method.get_python_name()) == "__init__":
+        # NOTE: This may not be a sufficient test.
+        if str(self.method.get_python_name()) == str(target_name):
             program.build_tuple(count + 1)  # Stack: tuple
             # Must use the actual class.
             # NOTE: Verify this.
@@ -1288,6 +1293,7 @@ class BytecodeTranslator(BytecodeReader):
             program.pop_top()               # Stack:
             program.start_label("next2")
 
+        # Initialisation outside an initialisation method.
         elif str(target_name) == "__init__":
             # NOTE: Due to changes with the new instruction's implementation, the
             # NOTE: stack differs from that stated: objectref, arg1, arg2, ...
