@@ -2,7 +2,7 @@
 
 import os
 import sys
-from java.lang._object import *
+from java._object import *
 import java.io
 
 class Character(Object):
