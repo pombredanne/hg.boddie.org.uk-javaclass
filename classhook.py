@@ -151,15 +151,26 @@ class ClassLoader(ihooks.ModuleLoader):
 
         for class_file in class_files:
             translator = bytecode.ClassTranslator(class_file)
-            cls = translator.process(global_names)
+            cls, external_names = translator.process(global_names)
             module.__dict__[cls.__name__] = cls
             classes.append((cls, class_file))
+
+            # Import the local names.
+
+            for external_name in external_names:
+                external_name_parts = external_name.split(".")
+                if len(external_name_parts) > 1:
+                    external_module_name = ".".join(external_name_parts[:-1])
+                    print "* Importing", external_module_name
+                    obj = __import__(external_module_name, global_names, {}, [])
+                    global_names[external_name_parts[0]] = obj
 
         # Finally, call __clinit__ methods for all relevant classes.
 
         for cls, class_file in classes:
+            print "**", cls, class_file
             if hasattr(cls, "__clinit__"):
-                cls.__clinit__()
+                eval(cls.__clinit__.func_code, global_names)
 
         return module
 
