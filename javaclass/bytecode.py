@@ -2331,8 +2331,12 @@ class ClassTranslator:
 
         return cls
 
-    def get_super_class(self):
-        return self.class_file.super_class
+    def get_base_class_references(self):
+        class_names = []
+        if self.class_file.super_class is not None:
+            class_names.append(self.class_file.super_class)
+        class_names += self.class_file.interfaces
+        return class_names
 
     def get_base_classes(self, global_names):
 
@@ -2343,21 +2347,24 @@ class ClassTranslator:
         tuple).
         """
 
-        super_class = self.class_file.super_class
-        if super_class is None:
-            return ()
+        base_classes = []
 
-        super_class_name = super_class.get_python_name()
-        super_class_name_parts = super_class_name.split(".")
+        for class_ in self.get_base_class_references():
+            base_classes.append(self._get_class(class_, global_names))
+
+        return tuple(base_classes)
+
+    def _get_class(self, class_, global_names):
+        class_name = class_.get_python_name()
+        class_name_parts = class_name.split(".")
         obj = global_names
-        for super_class_name_part in super_class_name_parts[:-1]:
+        for class_name_part in class_name_parts[:-1]:
             try:
-                obj = obj[super_class_name_part].__dict__
+                obj = obj[class_name_part].__dict__
             except KeyError:
                 raise AttributeError, "Cannot find '%s' when referencing Java class '%s'" % (
-                    super_class_name_part, super_class_name)
-        obj = obj[super_class_name_parts[-1]]
-        return (obj,)
+                    class_name_part, class_name)
+        return obj[class_name_parts[-1]]
 
     def make_varnames(self, nlocals, method_is_static=0):
 
