@@ -1364,6 +1364,8 @@ class BytecodeTranslator(BytecodeReader):
         # Stack: objectref, arg1, arg2, ...
         program.build_tuple(count)          # Stack: objectref, tuple
         program.rot_two()                   # Stack: tuple, objectref
+        # NOTE: The interface information is not used to discover the correct
+        # NOTE: method.
         self._invoke(target_name, program)
 
     def invokespecial(self, arguments, program):
@@ -1374,87 +1376,21 @@ class BytecodeTranslator(BytecodeReader):
         target = self.class_file.constants[index - 1]
         original_name = target.get_name()
         target_name = target.get_python_name()
-        method_name = self.method.get_name()
-
         # Get the number of parameters from the descriptor.
-
         count = len(target.get_descriptor()[0])
-
-        # The stack may contain one of the following patterns:
-        # Stack: classref, arg1, arg2, ...
-        # Stack: objectref, arg1, arg2, ...
-        # method == __init__, classref -> classref(arg1, arg2, ...)
-        # method == __init__, objectref == self -> cls.bases[0].__init__(objectref, arg1, arg2, ...)
-        # method == __init__, objectref != self -> should not occur
-        # method != __init__, classref -> classref.method(classref, arg1, arg2, ...)
-        # method != __init__, objectref == self -> cls.bases[0].method(objectref, arg1, arg2, ...)
-        # method != __init__, objectref != self -> should not occur
-
         # First, we build a tuple of the reference and arguments.
-
-        program.build_tuple(count + 1)  # Stack: tuple
-
-        # Then, we test the nature of the reference.
-
-        program.dup_top()               # Stack: tuple, tuple
-        program.load_const(0)           # Stack: tuple, tuple, 0
-        program.binary_subscr()         # Stack: tuple, reference
-
-        # Is it self?
-
-        program.dup_top()               # Stack: tuple, reference, reference
-        program.load_fast(0)            # Stack: tuple, reference, reference, self|cls
-        program.compare_op("is")        # Stack: tuple, reference, result
-        program.jump_to_label(1, "is-self")
-        program.pop_top()               # Stack: tuple, reference
-
-        # Is another class or reference.
-        # NOTE: Reference case not covered!
-
-        if str(original_name) == "<init>":
-            program.rot_two()               # Stack: reference, tuple
-            program.load_const(1)           # Stack: reference, tuple, 1
-            program.slice_1()               # Stack: reference, tuple[1:]
-            program.call_function_var(0)    # Stack: result
-            # NOTE: Combinations of new, dup tend to produce interfering extra
-            # NOTE: class references.
-            program.rot_two()               # Stack: objectref, classref
-            program.pop_top()
-            program.jump_to_label(None, "done")
-        else:
-            self._invoke(target_name, program)
-            program.jump_to_label(None, "done")
-
-        # Is self.
-
-        program.start_label("is-self")
-        program.pop_top()               # Stack: tuple, reference
-        program.pop_top()               # Stack: tuple
+        program.build_tuple(count + 1)      # Stack: tuple
         # Get the class name instead of the fully qualified name.
-        full_class_name = str(self.class_file.this_class.get_python_name())
-        class_name = full_class_name.split(".")[-1]
-        program.load_global(class_name) # Stack: tuple, classref
-        program.load_attr("__bases__")  # Stack: tuple, bases
-        program.dup_top()               # Stack: tuple, bases, bases
-        program.load_global("len")      # Stack: tuple, bases, bases, len
-        program.rot_two()               # Stack: tuple, bases, len, bases
-        program.call_function(1)        # Stack: tuple, bases, #bases
-        program.load_const(0)           # Stack: tuple, bases, #bases, 0
-        program.compare_op("==")        # Stack: tuple, bases, result
-        program.jump_to_label(1, "no-bases")
-        program.pop_top()               # Stack: tuple, bases
-        program.load_const(0)           # Stack: tuple, bases, 0
-        program.binary_subscr()         # Stack: tuple, bases[0]
-        self._invoke(target_name, program)
-        program.jump_to_label(None, "done")
-
-        # No bases found, do no invocation.
-        program.start_label("no-bases")
-        program.pop_top()               # Stack: tuple, bases
-        program.pop_top()               # Stack: tuple
-        program.pop_top()               # Stack:
-
-        program.start_label("done")
+        # NOTE: Do proper resolution of classes,
+        # NOTE: Not bothering with Object initialisation.
+        full_class_name = target.get_class().get_python_name()
+        if full_class_name != "java.lang.Object":
+            class_name = full_class_name.split(".")[-1]
+            program.load_global(class_name) # Stack: tuple, classref
+            self._invoke(target_name, program)
+        # Remove Python None return value.
+        if str(original_name) == "<init>":
+            program.pop_top()
 
     def invokestatic(self, arguments, program):
         # NOTE: This implementation does not perform the necessary checks for
@@ -1466,14 +1402,15 @@ class BytecodeTranslator(BytecodeReader):
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
         # Stack: arg1, arg2, ...
-        program.build_tuple(count)      # Stack: tuple
+        program.build_tuple(count)          # Stack: tuple
         # Use the class to provide access to static methods.
         # Get the class name instead of the fully qualified name.
-        # NOTE: Need to find the class that declared the field being accessed.
-        full_class_name = str(self.class_file.this_class.get_python_name())
-        class_name = full_class_name.split(".")[-1]
-        program.load_global(class_name) # Stack: tuple, classref
-        self._invoke(target_name, program)
+        # NOTE: Do proper resolution of classes,
+        full_class_name = target.get_class().get_python_name()
+        if full_class_name != "java.lang.Object":
+            class_name = full_class_name.split(".")[-1]
+            program.load_global(class_name) # Stack: tuple, classref
+            self._invoke(target_name, program)
 
     def invokevirtual (self, arguments, program):
         # NOTE: This implementation does not perform the necessary checks for
@@ -1578,10 +1515,26 @@ class BytecodeTranslator(BytecodeReader):
     lconst_1 = iconst_1
 
     def ldc(self, arguments, program):
-        program.load_const(self.class_file.constants[arguments[0] - 1].get_value())
+        const = self.class_file.constants[arguments[0] - 1]
+        if isinstance(const, classfile.StringInfo):
+            program.load_global("java")
+            program.load_attr("lang")
+            program.load_attr("String")
+            program.load_const(const.get_value())
+            program.call_function(2)
+        else:
+            program.load_const(const)
 
     def ldc_w(self, arguments, program):
-        program.load_const(self.class_file.constants[(arguments[0] << 8) + arguments[1] - 1].get_value())
+        const = self.class_file.constants[(arguments[0] << 8) + arguments[1] - 1]
+        if isinstance(const, classfile.StringInfo):
+            program.load_global("java")
+            program.load_attr("lang")
+            program.load_attr("String")
+            program.load_const(const.get_value())
+            program.call_function(2)
+        else:
+            program.load_const(const)
 
     ldc2_w = ldc_w
     ldiv = idiv
@@ -1698,11 +1651,10 @@ class BytecodeTranslator(BytecodeReader):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
         # NOTE: Using the string version of the name which may contain incompatible characters.
+        program.load_global("object")
+        program.load_attr("__new__")
         program.load_global(str(target_name))
-        # NOTE: Unlike Java, we do not provide an object reference. Instead, a
-        # NOTE: class reference is provided, and the invokespecial method's
-        # NOTE: behaviour is changed.
-        #program.call_function(0)
+        program.call_function(1)
 
     def newarray(self, arguments, program):
         # NOTE: Does not raise NegativeArraySizeException.
@@ -1835,17 +1787,19 @@ class ClassTranslator:
         translator.process(method, writer)
         return translator, writer
 
-    def make_method(self, method_name, methods, global_names, namespace):
+    def make_method(self, real_method_name, methods, global_names, namespace):
 
         """
-        Make a dispatcher method with the given 'method_name', providing
+        Make a dispatcher method with the given 'real_method_name', providing
         dispatch to the supplied type-sensitive 'methods', accessing the given
         'global_names' where necessary, and storing the new method in the
         'namespace' provided.
         """
 
-        if method_name == "<init>":
+        if real_method_name == "<init>":
             method_name = "__init__"
+        else:
+            method_name = real_method_name
 
         # Where only one method exists, just make an alias.
 
@@ -1854,19 +1808,33 @@ class ClassTranslator:
             namespace[method_name] = fn
             return
 
-        # Find the maximum number of parameters involved.
-        #maximum = max([len(method.get_descriptor()[0]) for method in methods])
+        # Write a simple bytecode dispatching mechanism.
 
         program = BytecodeWriter()
 
+        # Remember whether any of the methods are static.
+        # NOTE: This should be an all or nothing situation.
+
+        method_is_static = 0
+
         # NOTE: The code below should use dictionary-based dispatch for better performance.
 
-        program.load_fast(1)                        # Stack: arguments
         for method, fn in methods:
+            method_is_static = real_method_name != "<init>" and method_is_static or classfile.has_flags(method.access_flags, [classfile.STATIC])
+
+            if method_is_static:
+                program.load_fast(0)                # Stack: arguments
+            else:
+                program.load_fast(1)                # Stack: arguments
+
             program.setup_loop()
-            program.dup_top()                       # Stack: arguments, arguments
-            program.load_const(1)                   # Stack: arguments, arguments, 1
-            program.store_fast(2)                   # Stack: arguments, arguments (found = 1)
+            program.load_const(1)                   # Stack: arguments, 1
+
+            if method_is_static:
+                program.store_fast(1)               # Stack: arguments (found = 1)
+            else:
+                program.store_fast(2)               # Stack: arguments (found = 1)
+
             # Emit a list of parameter types.
             descriptor_types = method.get_descriptor()[0]
             for descriptor_type in descriptor_types:
@@ -1875,77 +1843,104 @@ class ClassTranslator:
                 if python_type == "instance":
                     # NOTE: This will need extending.
                     python_type = object_type
-                program.load_global(python_type)    # Stack: arguments, arguments, type, ...
+                program.load_global(python_type)    # Stack: arguments, type, ...
             program.build_list(len(descriptor_types))
-                                                    # Stack: arguments, arguments, types
+                                                    # Stack: arguments, types
             # Make a map of arguments and types.
-            program.load_const(None)                # Stack: arguments, arguments, types, None
-            program.rot_three()                     # Stack: arguments, None, arguments, types
-            program.build_tuple(3)                  # Stack: arguments, tuple
-            program.load_global("map")              # Stack: arguments, tuple, map
-            program.rot_two()                       # Stack: arguments, map, tuple
-            program.call_function_var(0)            # Stack: arguments, list (mapping arguments to types)
+            program.load_const(None)                # Stack: arguments, types, None
+            program.rot_three()                     # Stack: None, arguments, types
+            program.build_tuple(3)                  # Stack: tuple
+            program.load_global("map")              # Stack: tuple, map
+            program.rot_two()                       # Stack: map, tuple
+            program.call_function_var(0)            # Stack: list (mapping arguments to types)
             # Loop over each pair.
-            program.get_iter()                      # Stack: arguments, iter
-            program.for_iter()                      # Stack: arguments, iter, (argument, type)
-            program.unpack_sequence(2)              # Stack: arguments, iter, type, argument
-            program.dup_top()                       # Stack: arguments, iter, type, argument, argument
-            program.load_const(None)                # Stack: arguments, iter, type, argument, argument, None
-            program.compare_op("is")                # Stack: arguments, iter, type, argument, result
+            program.get_iter()                      # Stack: iter
+            program.for_iter()                      # Stack: iter, (argument, type)
+            program.unpack_sequence(2)              # Stack: iter, type, argument
+            program.dup_top()                       # Stack: iter, type, argument, argument
+            program.load_const(None)                # Stack: iter, type, argument, argument, None
+            program.compare_op("is")                # Stack: iter, type, argument, result
             # Missing argument?
             program.jump_to_label(0, "present")
-            program.pop_top()                       # Stack: arguments, iter, type, argument
-            program.pop_top()                       # Stack: arguments, iter, type
-            program.pop_top()                       # Stack: arguments, iter
-            program.load_const(0)                   # Stack: arguments, iter, 0
-            program.store_fast(2)                   # Stack: arguments, iter (found = 0)
+            program.pop_top()                       # Stack: iter, type, argument
+            program.pop_top()                       # Stack: iter, type
+            program.pop_top()                       # Stack: iter
+            program.load_const(0)                   # Stack: iter, 0
+
+            if method_is_static:
+                program.store_fast(1)               # Stack: iter (found = 0)
+            else:
+                program.store_fast(2)               # Stack: iter (found = 0)
+
             program.break_loop()
             # Argument was present.
             program.start_label("present")
-            program.pop_top()                       # Stack: arguments, iter, type, argument
-            program.rot_two()                       # Stack: arguments, iter, argument, type
-            program.dup_top()                       # Stack: arguments, iter, argument, type, type
-            program.load_const(None)                # Stack: arguments, iter, argument, type, type, None
-            program.compare_op("is")                # Stack: arguments, iter, argument, type, result
+            program.pop_top()                       # Stack: iter, type, argument
+            program.rot_two()                       # Stack: iter, argument, type
+            program.dup_top()                       # Stack: iter, argument, type, type
+            program.load_const(None)                # Stack: iter, argument, type, type, None
+            program.compare_op("is")                # Stack: iter, argument, type, result
             # Missing parameter type?
             program.jump_to_label(0, "present")
-            program.pop_top()                       # Stack: arguments, iter, argument, type
-            program.pop_top()                       # Stack: arguments, iter, argument
-            program.pop_top()                       # Stack: arguments, iter
-            program.load_const(0)                   # Stack: arguments, iter, 0
-            program.store_fast(2)                   # Stack: arguments, iter (found = 0)
+            program.pop_top()                       # Stack: iter, argument, type
+            program.pop_top()                       # Stack: iter, argument
+            program.pop_top()                       # Stack: iter
+            program.load_const(0)                   # Stack: iter, 0
+
+            if method_is_static:
+                program.store_fast(1)               # Stack: iter (found = 0)
+            else:
+                program.store_fast(2)               # Stack: iter (found = 0)
+
             program.break_loop()
             # Parameter was present.
             program.start_label("present")
-            program.pop_top()                       # Stack: arguments, iter, argument, type
-            program.build_tuple(2)                  # Stack: arguments, iter, (argument, type)
-            program.load_global("isinstance")       # Stack: arguments, iter, (argument, type), isinstance
-            program.rot_two()                       # Stack: arguments, iter, isinstance, (argument, type)
-            program.call_function_var(0)            # Stack: arguments, iter, result
+            program.pop_top()                       # Stack: iter, argument, type
+            program.build_tuple(2)                  # Stack: iter, (argument, type)
+            program.load_global("isinstance")       # Stack: iter, (argument, type), isinstance
+            program.rot_two()                       # Stack: iter, isinstance, (argument, type)
+            program.call_function_var(0)            # Stack: iter, result
             program.jump_to_label(1, "match")
-            program.pop_top()                       # Stack: arguments, iter
-            program.load_const(0)                   # Stack: arguments, iter, 0
-            program.store_fast(2)                   # Stack: arguments, iter (found = 0)
+            program.pop_top()                       # Stack: iter
+            program.load_const(0)                   # Stack: iter, 0
+
+            if method_is_static:
+                program.store_fast(1)               # Stack: iter (found = 0)
+            else:
+                program.store_fast(2)               # Stack: iter (found = 0)
+
             program.break_loop()
             # Argument type and parameter type matched.
             program.start_label("match")
-            program.pop_top()                       # Stack: arguments, iter
-            program.end_loop()                      # Stack: arguments
+            program.pop_top()                       # Stack: iter
+            program.end_loop()                      # Stack:
             # If all the parameters matched, call the method.
-            program.load_fast(2)                    # Stack: arguments, match
+
+            if method_is_static:
+                program.load_fast(1)                # Stack: match
+            else:
+                program.load_fast(2)                # Stack: match
+
             program.jump_to_label(0, "failed")
             # All the parameters matched.
-            program.pop_top()                       # Stack: arguments
-            program.dup_top()                       # Stack: arguments, arguments
-            program.load_fast(0)                    # Stack: arguments, arguments, self
+            program.pop_top()                       # Stack:
+
+            if method_is_static:
+                program.load_fast(0)                # Stack: arguments
+                program.load_global(str(self.class_file.this_class.get_python_name()))
+                                                    # Stack: arguments, class
+            else:
+                program.load_fast(1)                # Stack: arguments
+                program.load_fast(0)                # Stack: arguments, self
+
             program.load_attr(str(method.get_python_name()))
-                                                    # Stack: arguments, arguments, method
-            program.rot_two()                       # Stack: arguments, method, arguments
-            program.call_function_var(0)            # Stack: arguments, result
+                                                    # Stack: arguments, method
+            program.rot_two()                       # Stack: method, arguments
+            program.call_function_var(0)            # Stack: result
             program.return_value()
             # Try the next method if arguments or parameters were missing or incorrect.
             program.start_label("failed")
-            program.pop_top()                       # Stack: arguments
+            program.pop_top()                       # Stack:
 
         # Raise an exception if nothing matched.
         # NOTE: Improve this.
@@ -1959,11 +1954,20 @@ class ClassTranslator:
         # NOTE: One actual parameter, flags as 71 apparently means that a list
         # NOTE: parameter is used in a method.
 
+        if method_is_static:
+            nargs = 0
+        else:
+            nargs = 1
         nlocals = program.max_locals + 1
-        code = new.code(1, nlocals, program.max_stack_depth, 71, program.get_output(),
-            tuple(program.get_constants()), tuple(program.get_names()), tuple(self.make_varnames(nlocals)),
+
+        code = new.code(nargs, nlocals, program.max_stack_depth, 71, program.get_output(),
+            tuple(program.get_constants()), tuple(program.get_names()), tuple(self.make_varnames(nlocals, method_is_static)),
             self.filename, method_name, 0, "")
         fn = new.function(code, global_names)
+
+        if method_is_static:
+            fn = staticmethod(fn)
+
         namespace[method_name] = fn
 
     def process(self, global_names):
@@ -1986,38 +1990,39 @@ class ClassTranslator:
         real_methods = {}
         for method in self.class_file.methods:
             real_method_name = str(method.get_name())
+            method_name = str(method.get_python_name())
+
             t, w = self.translate_method(method)
 
-            # Fix up special class initialisation methods.
+            # Fix up special class initialisation methods and static methods.
 
-            if real_method_name == "<clinit>":
-                flags = 3
+            method_is_static = real_method_name != "<init>" and classfile.has_flags(method.access_flags, [classfile.STATIC])
+            if method_is_static:
+                nargs = len(method.get_descriptor()[0])
             else:
-                flags = 67
+                nargs = len(method.get_descriptor()[0]) + 1
             nlocals = w.max_locals + 1
-            nargs = len(method.get_descriptor()[0]) + 1
-
-            method_name = str(method.get_python_name())
+            flags = 67
 
             # NOTE: Add line number table later.
 
             code = new.code(nargs, nlocals, w.max_stack_depth, flags, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
-                tuple(self.make_varnames(nlocals)), self.filename, method_name, 0, "")
+                tuple(self.make_varnames(nlocals, method_is_static)), self.filename, method_name, 0, "")
 
             # NOTE: May need more globals.
 
             fn = new.function(code, global_names)
+
+            # Fix up special class initialisation methods and static methods.
+
+            if method_is_static:
+                fn = staticmethod(fn)
 
             # Remember the real method name and the corresponding methods produced.
 
             if not real_methods.has_key(real_method_name):
                 real_methods[real_method_name] = []
             real_methods[real_method_name].append((method, fn))
-
-            # Fix up special class initialisation methods.
-
-            if real_method_name == "<clinit>":
-                fn = classmethod(fn)
 
             # Add the method to the class's namespace.
 
@@ -2053,7 +2058,7 @@ class ClassTranslator:
 
         original_name = str(self.class_file.super_class.get_name())
         if original_name in ("java/lang/Object", "java/lang/Exception"):
-            return ()
+            return (object,)
         else:
             full_this_class_name = str(self.class_file.this_class.get_python_name())
             this_class_name_parts = full_this_class_name.split(".")
@@ -2074,15 +2079,21 @@ class ClassTranslator:
                     obj = getattr(obj, super_class_name_part)
             return (obj,)
 
-    def make_varnames(self, nlocals):
+    def make_varnames(self, nlocals, method_is_static=0):
 
         """
         A utility method which invents variable names for the given number -
         'nlocals' - of local variables in a method. Returns a list of such
         variable names.
+
+        If the optional 'method_is_static' is set to true, do not use "self" as
+        the first argument name.
         """
 
-        l = ["self"]
+        if method_is_static:
+            l = ["cls"]
+        else:
+            l = ["self"]
         for i in range(1, nlocals):
             l.append("_l%s" % i)
         return l[:nlocals]
