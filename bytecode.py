@@ -8,15 +8,32 @@ NOTE: Synchronized constructs are not actually supported.
 """
 
 import dis # for access to Python bytecode values
+from UserDict import UserDict
 
 # Bytecode production classes.
 
 class BytecodeWriter:
     def __init__(self):
         self.loops = []
-        self.jumps = []
+        self.jumps = {}
         self.output = []
         self.position = 0
+
+        # Mapping from values to indexes.
+        self.constants = {}
+
+        # Mapping from names to indexes.
+        # NOTE: This may be acquired from elsewhere.
+        self.globals = {}
+
+    def get_output(self):
+        output = []
+        for element in self.output:
+            if isinstance(element, LazyValue):
+                output.append(chr(element.value))
+            else:
+                output.append(chr(element))
+        return "".join(output)
 
     # Special methods.
 
@@ -26,16 +43,40 @@ class BytecodeWriter:
         self.output[current_loop_start + 1] = self.position
         self.pop_block()
 
-    def jump_to_next(self, status):
-        self.jumps.push(self.position)
-        if status:
+    def jump_to_label(self, status, name):
+        # Record the instruction using the jump.
+        if not self.jumps.has_key(name):
+            self.jumps[name] = []
+        self.jumps[name].append(self.position)
+        if status is None:
+            self.jump_forward()
+        elif status:
             self.jump_if_true()
         else:
             self.jump_if_false()
 
-    def start_next(self):
-        current_jump_start = self.jumps.pop()
-        self.output[current_jump_start + 1] = self.position
+    def start_label(self, name):
+        # Fill in all jump instructions.
+        for jump_instruction in self.jumps[name]:
+            self.output[jump_instruction + 1] = self.position
+
+    # Complicated methods.
+
+    def load_const(self, value):
+        self.output.append(opmap["LOAD_CONST"])
+        if not self.constants.has_key(value):
+            self.constants[value] = len(self.constants.keys())
+        self.output.append(self.constants[value])
+
+    def load_global(self, name):
+        self.output.append(opmap["LOAD_GLOBAL"])
+        if not self.globals.has_key(value):
+            self.globals[name] = len(self.globals.keys())
+        self.output.append(self.globals[name])
+
+    def load_fast(self, index):
+        self.output.append(opmap["LOAD_FAST"])
+        self.output.append(index)
 
     # Normal bytecode generators.
 
@@ -55,12 +96,57 @@ class BytecodeWriter:
         self.output.append(offset) # May be filled in later
         self.position += 2
 
+    def jump_forward(self, offset=None):
+        self.output.append(opmap["JUMP_FORWARD"])
+        self.output.append(offset) # May be filled in later
+        self.position += 2
+
+# Utility classes and functions.
+
+class LazyDict(UserDict):
+    def __getitem__(self, key):
+        if not self.data.has_key(key):
+            self.data[key] = LazyValue()
+        return self.data[key]
+    def __setitem__(self, key, value):
+        if self.data.has_key(key):
+            existing_value = self.data[key]
+            if isinstance(existing_value, LazyValue):
+                existing_value.value = value
+                return
+        self.data[key] = value
+
+class LazyValue:
+    def __init__(self, value=None):
+        self.value = value
+
+def signed(value, limit):
+
+    """
+    Return the signed integer from the unsigned 'value', where 'limit' (a value
+    one greater than the highest possible positive integer) is used to determine
+    whether a negative or positive result is produced.
+    """
+
+    d, r = divmod(value, limit)
+    if d == 1:
+        mask = limit * 2 - 1
+        return -1 - (value ^ mask)
+    else:
+        return value
+
+def signed2(value):
+    return signed(value, 0x8000)
+
+def signed4(value):
+    return signed(value, 0x80000000)
+
 # Bytecode conversion.
 
 class BytecodeReader:
     def __init__(self, class_file):
         self.class_file = class_file
-        self.position_mapping = {}
+        self.position_mapping = LazyDict()
 
     def process(self, code, program):
         self.java_position = 0
@@ -120,7 +206,8 @@ class BytecodeReader:
         # NOTE: Not using the index to type the list/array.
         index = arguments[0] << 8 + arguments[1]
 
-        program.build_list()
+        program.build_list()        # Stack: count, list
+        program.rot_two()           # Stack: list, count
         program.setup_loop()
         program.load_global("range")
         program.load_const(0)       # Stack: list, count, range, 0
@@ -315,12 +402,12 @@ class BytecodeReader:
     getstatic = getfield # Ignoring Java restrictions
 
     def goto(self, arguments, program):
-        offset = arguments[0] << 8 + arguments[1]
+        offset = signed2(arguments[0] << 8 + arguments[1])
         java_absolute = self.java_position + offset
         program.jump_absolute(self.position_mapping[java_absolute])
 
     def goto_w(self, arguments, program):
-        offset = arguments[0] << 24 + arguments[1] << 16 + arguments[2] << 8 + arguments[3]
+        offset = signed4(arguments[0] << 24 + arguments[1] << 16 + arguments[2] << 8 + arguments[3])
         java_absolute = self.java_position + offset
         program.jump_absolute(self.position_mapping[java_absolute])
 
@@ -378,12 +465,12 @@ class BytecodeReader:
     idiv = fdiv
 
     def _if_xcmpx(self, arguments, program, op):
-        offset = arguments[0] << 8 + arguments[1]
+        offset = signed2(arguments[0] << 8 + arguments[1])
         java_absolute = self.java_position + offset
         program.compare_op(op)
-        program.jump_to_next(0) # skip if false
+        program.jump_to_label(0, "next") # skip if false
         program.goto(offset)
-        program.start_next()
+        program.start_label("next")
 
     def if_acmpeq(self, arguments, program):
         # NOTE: No type checking performed.
@@ -558,14 +645,156 @@ class BytecodeReader:
     isub = fsub
     iushr = ishr # Ignoring distinctions between arithmetic and logical shifts
 
-    def ishr(self, arguments, program):
+    def ixor(self, arguments, program):
         # NOTE: No type checking performed.
         program.binary_xor()
 
     def jsr(self, arguments, program):
-        offset = arguments[0] << 8 + arguments[1]
+        offset = signed2(arguments[0] << 8 + arguments[1])
         java_absolute = self.java_position + offset
+        # Store the address of the next instruction.
+        program.load_const(self.position_mapping[self.java_position + 3])
+        program.jump_absolute(self.position_mapping[java_absolute])
+
+    def jsr_w(self, arguments, program):
+        offset = signed4(arguments[0] << 24 + arguments[1] << 16 + arguments[2] << 8 + arguments[3])
+        java_absolute = self.java_position + offset
+        # Store the address of the next instruction.
+        program.load_const(self.position_mapping[self.java_position + 5])
+        program.jump_absolute(self.position_mapping[java_absolute])
+
+    l2d = i2d
+    l2f = i2f
+
+    def l2i(self, arguments, program):
+        pass # Preserving Java semantics
+
+    ladd = iadd
+    laload = iaload
+    land = iand
+    lastore = iastore
+
+    def lcmp(self, arguments, program):
+        # NOTE: No type checking performed.
+        program.dup_topx(2)                 # Stack: value1, value2, value1, value2
+        program.compare_op(">")             # Stack: value1, value2, result
+        program.jump_to_label(0, "equals")
+        # True - produce result and branch.
+        program.pop_top()                   # Stack: value1, value2
+        program.pop_top()                   # Stack: value1
+        program.pop_top()                   # Stack:
+        program.load_const(1)               # Stack: 1
+        program.jump_to_label(None, "next")
+        # False - test equality.
+        program.start_label("equals")
+        program.pop_top()                   # Stack: value1, value2
+        program.dup_topx(2)                 # Stack: value1, value2, value1, value2
+        program.compare_op("==")            # Stack: value1, value2, result
+        program.jump_to_label(0, "less")
+        # True - produce result and branch.
+        program.pop_top()                   # Stack: value1, value2
+        program.pop_top()                   # Stack: value1
+        program.pop_top()                   # Stack:
+        program.load_const(0)               # Stack: 0
+        program.jump_to_label(None, "next")
+        # False - produce result.
+        program.start_label("less")
+        program.pop_top()                   # Stack: value1, value2
+        program.pop_top()                   # Stack: value1
+        program.pop_top()                   # Stack:
+        program.load_const(-1)              # Stack: -1
+        program.start_label("next")
+
+    lconst_0 = iconst_0
+    lconst_1 = iconst_1
+
+    def ldc(self, arguments, program):
+        program.load_const(self.class_file.constants[arguments[0] - 1])
+
+    def ldc_w(self, arguments, program):
+        program.load_const(self.class_file.constants[arguments[0] << 8 + arguments[1] - 1])
+
+    ldc2_w = ldc_w
+    ldiv = idiv
+    lload = iload
+    lload_0 = iload_0
+    lload_1 = iload_1
+    lload_2 = iload_2
+    lload_3 = iload_3
+    lmul = imul
+    lneg = ineg
+
+    def lookupswitch(self, arguments, program):
+        # Find the offset to the next 4 byte boundary in the code.
+        d, r = divmod(self.java_position, 4)
+        to_boundary = (4 - r) % 4
+        # Get the pertinent arguments.
+        arguments = arguments[to_boundary:]
+        default = arguments[0] << 24 + arguments[1] << 16 + arguments[2] << 8 + arguments[3]
+        npairs = arguments[4] << 24 + arguments[5] << 16 + arguments[6] << 8 + arguments[7]
+        # Process the pairs.
+        # NOTE: This is not the most optimal implementation.
+        pair_index = 8
+        for pair in range(0, npairs):
+            match = (arguments[pair_index] << 24 + arguments[pair_index + 1] << 16 +
+                arguments[pair_index + 2] << 8 + arguments[pair_index + 3])
+            offset = signed4(arguments[pair_index + 4] << 24 + arguments[pair_index + 5] << 16 +
+                arguments[pair_index + 6] << 8 + arguments[pair_index + 7])
+            # Calculate the branch target.
+            java_absolute = self.java_position + offset
+            # Generate branching code.
+            program.dup_top()                                           # Stack: key, key
+            program.load_const(match)                                   # Stack: key, key, match
+            program.compare_op("==")                                    # Stack: key, result
+            program.jump_to_label(0, "end" + str(pair))
+            program.pop_top()                                           # Stack: key
+            program.pop_top()                                           # Stack:
+            program.jump_absolute(self.position_mapping[java_absolute])
+            # Generate the label for the end of the branching code.
+            program.start_label("end" + str(pair))
+            program.pop_top()                                           # Stack: key
+            # Update the index.
+            pair_index += 8
+        # Generate the default.
+        java_absolute = self.java_position + default
+        program.jump_absolute(self.position_mapping[java_absolute])
+
+    lor = ior
+    lrem = irem
+    lreturn = ireturn
+    lshl = ishl
+    lshr = ishr
+    lstore = istore
+    lstore_0 = istore_0
+    lstore_1 = istore_1
+    lstore_2 = istore_2
+    lstore_3 = istore_3
+    lsub = isub
+    lushr = iushr
+    lxor = ixor
+
+    def monitorenter(self, arguments, program):
         # NOTE: To be implemented.
+        pass
+
+    def monitorexit(self, arguments, program):
+        # NOTE: To be implemented.
+        pass
+
+    def multianewarray(self, arguments, program):
+        program.build_list()        # Stack: count1, count2, ..., countN, list
+        program.rot_two()           # Stack: count1, count2, ..., list, countN
+        program.setup_loop()
+        program.load_global("range")
+        program.load_const(0)       # Stack: list, count, range, 0
+        program.rot_three()         # Stack: list, 0, count, range
+        program.rot_three()         # Stack: list, range, 0, count
+        program.call_function(2)    # Stack: list, range_list
+        program.get_iter()          # Stack: list, iter
+        program.for_iter()          # Stack: list, iter, value
+        for i in range(0, arguments[2]):
+                                                # Stack: 
+            self.anewarray(arguments, program)  # Stack: list, iter
 
     def wide(self, code, program):
         # NOTE: To be implemented.
