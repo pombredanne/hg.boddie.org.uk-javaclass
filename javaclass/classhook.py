@@ -251,7 +251,7 @@ class ClassLoader(ihooks.ModuleLoader):
 
         if top_level:
             self._init_classes()
-            self.loaded_classes = {}
+            delattr(self, "loaded_classes")
 
         return main_module
 
@@ -350,18 +350,17 @@ class ClassLoader(ihooks.ModuleLoader):
 
         init_order = []
         for class_name, (module, translator) in self.loaded_classes.items():
-            super_class = translator.get_super_class()
 
-            # Insert the super class before any mention of the current class.
+            # Insert the base classes before any mention of the current class.
 
-            if super_class is not None:
-                super_class_name = str(super_class.get_name())
-                if super_class_name not in init_order:
+            for base_class in translator.get_base_class_references():
+                base_class_name = str(base_class.get_name())
+                if base_class_name not in init_order:
                     if class_name not in init_order:
-                        init_order.append(super_class_name)
+                        init_order.append(base_class_name)
                     else:
                         index = init_order.index(class_name)
-                        init_order.insert(index, super_class_name)
+                        init_order.insert(index, base_class_name)
 
             if class_name not in init_order:
                 init_order.append(class_name)
