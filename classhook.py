@@ -6,7 +6,9 @@ from imp import PY_SOURCE, PKG_DIRECTORY, C_BUILTIN
 import classfile, bytecode
 import new
 
-"""
+JAVA_PACKAGE = 20041113
+JAVA_CLASS = 20041114
+
 class ClassHooks(ihooks.Hooks):
 
     "A filesystem hooks class providing information about supported files."
@@ -15,18 +17,11 @@ class ClassHooks(ihooks.Hooks):
 
         "Return the recognised suffixes."
 
-        return ihooks.Hooks.get_suffixes(self) + [(os.extsep + "class", "r", PY_SOURCE)]
-"""
+        return ihooks.Hooks.get_suffixes(self) + [("", "", JAVA_PACKAGE), (os.extsep + "class", "r", JAVA_CLASS)]
 
 class ClassLoader(ihooks.ModuleLoader):
 
     "A class providing support for searching directories for supported files."
-
-    """
-    def find_module(self, name, path=None):
-        print "find_module", name, path
-        return ihooks.ModuleLoader.find_module(self, name, path)
-    """
 
     def find_module_in_dir(self, name, dir, allow_packages=1):
 
@@ -50,10 +45,10 @@ class ClassLoader(ihooks.ModuleLoader):
         else:
             path = os.path.join(dir, name)
 
-        print "Processing name", name, "in", dir, "producing", path
+        #print "Processing name", name, "in", dir, "producing", path
 
         if self._find_module_at_path(path):
-            return (None, path, ("", "", PKG_DIRECTORY))
+            return (None, path, ("", "", JAVA_PACKAGE))
         else:
             return None
 
@@ -84,13 +79,12 @@ class ClassLoader(ihooks.ModuleLoader):
         problem occurred in the import operation.
         """
 
-        #result = ihooks.ModuleLoader.load_module(self, name, stuff)
-        #if result is not None:
-        #    return result
-
         # Just go into the directory and find the class files.
 
         file, filename, info = stuff
+        suffix, mode, datatype = info
+        if datatype != JAVA_PACKAGE:
+            return ihooks.ModuleLoader.load_module(self, name, stuff)
 
         print "Loading", file, filename, info
 
@@ -116,26 +110,7 @@ class ClassLoader(ihooks.ModuleLoader):
         module.__path__ = [filename]
         return module
 
-"""
-class ClassImporter(ihooks.ModuleImporter):
-
-    def find_head_package(self, parent, name):
-        print "find_head_package", parent, name
-        return ihooks.ModuleImporter.find_head_package(self, parent, name)
-
-    def import_it(self, partname, fqname, parent, force_load=0):
-        print "import_it", partname, fqname, parent, force_load
-        print "modules", self.modules
-        try:
-            return parent.__dict__[partname]
-
-        except (KeyError, AttributeError):
-            return ihooks.ModuleImporter.import_it(
-                self, partname, fqname, parent, force_load
-                )
-"""
-
-importer = ihooks.ModuleImporter(loader=ClassLoader(hooks=ihooks.Hooks()))
+importer = ihooks.ModuleImporter(loader=ClassLoader(hooks=ClassHooks()))
 importer.install()
 
 # vim: tabstop=4 expandtab shiftwidth=4
