@@ -155,10 +155,12 @@ class BytecodeWriter:
         del self.jumps[name]
 
     def load_const_ret(self, value):
-        self.constants_for_exceptions.append(value)
-        self.load_const(value)
+        #self.constants_for_exceptions.append(value)
+        #self.load_const(value)
+        self.load_const(None)
 
     def ret(self, index):
+        self.load_fast(index)
         self.end_finally()
 
     def setup_except(self, target):
@@ -502,21 +504,13 @@ class BytecodeReader:
                 else:
                     program.setup_except(self.position_mapping[exception.handler_pc])
 
-            # Insert exception block end details.
-            for exception in exception_block_end.get(self.java_position, []):
-                # NOTE: Insert jump beyond handlers.
-                # NOTE: program.jump_forward/absolute(...)
-                # NOTE: Insert end finally at end of handlers as well as where "ret" occurs.
-                if exception.catch_type != 0:
-                    program.pop_block()
-
             # Insert exception handler details.
             # NOTE: Ensure that pop_block is reachable by possibly inserting it at the start of finally handlers.
             # NOTE: Insert a check for the correct exception at the start of each handler.
             for exception in exception_block_handler.get(self.java_position, []):
                 program.end_exception()
-                if exception.catch_type == 0:
-                    program.pop_block()
+                #if exception.catch_type == 0:
+                #    program.pop_block()
 
             # Where handlers are begun, do not produce equivalent bytecode since
             # the first handler instruction typically involves saving a local
@@ -528,6 +522,14 @@ class BytecodeReader:
             mnemonic, number_of_arguments = self.java_bytecodes[bytecode]
             number_of_arguments = self.process_bytecode(mnemonic, number_of_arguments, code, program)
             next_java_position = self.java_position + 1 + number_of_arguments
+
+            # Insert exception block end details.
+            for exception in exception_block_end.get(next_java_position, []):
+                # NOTE: Insert jump beyond handlers.
+                # NOTE: program.jump_forward/absolute(...)
+                # NOTE: Insert end finally at end of handlers as well as where "ret" occurs.
+                if exception.catch_type != 0:
+                    program.pop_block()
 
             # Only advance the JVM position after sneaking in extra Python
             # instructions.
@@ -759,7 +761,7 @@ class BytecodeDisassembler(BytecodeReader):
 
     def __getattr__(self, name):
         if name in self.bytecode_methods:
-            print name,
+            print "%5s %s" % (self.java_position, name),
             return self.generic
         else:
             raise AttributeError, name
@@ -793,7 +795,7 @@ class BytecodeTranslator(BytecodeReader):
         program.store_subscr()
 
     def aconst_null(self, arguments, program):
-        program.load_global(None)
+        program.load_const(None)
 
     def aload(self, arguments, program):
         program.load_fast(arguments[0])
@@ -831,7 +833,7 @@ class BytecodeTranslator(BytecodeReader):
         program.rot_two()           # Stack: iter, list
         program.dup_top()           # Stack: iter, list, list
         program.load_attr("append") # Stack: iter, list, append
-        program.load_global(None)   # Stack: iter, list, append, None
+        program.load_const(None)    # Stack: iter, list, append, None
         program.call_function(1)    # Stack: iter, list, None
         program.pop_top()           # Stack: iter, list
         program.rot_two()           # Stack: list, iter
@@ -862,6 +864,7 @@ class BytecodeTranslator(BytecodeReader):
 
     def athrow(self, arguments, program):
         # NOTE: NullPointerException not raised where null/None is found on the stack.
+        program.dup_top()
         program.raise_varargs(1)
 
     baload = aaload
@@ -1087,8 +1090,10 @@ class BytecodeTranslator(BytecodeReader):
         java_absolute = self.java_position + offset
         program.compare_op(op)
         program.jump_to_label(0, "next") # skip if false
+        program.pop_top()
         program.jump_absolute(self.position_mapping[java_absolute])
         program.start_label("next")
+        program.pop_top()
 
     def if_acmpeq(self, arguments, program):
         # NOTE: No type checking performed.
@@ -1554,26 +1559,30 @@ def __java_init__(self, *args):
 if __name__ == "__main__":
     import sys
     from classfile import ClassFile
-    f = open(sys.argv[1])
-    c = ClassFile(f.read())
-    import dis, new
-    namespace = {}
-    for method in c.methods:
-        attribute = method.attributes[0]
-        nargs = len(method.get_descriptor()[0]) + 1
-        t, w = translate(c, attribute.code, attribute.exception_table)
-        nlocals = w.max_locals + 1
-        filename = str(c.attributes[0].get_name())
-        method_name = str(method.get_name())
-        if method_name == "<init>":
-            method_name = "__init__"
-        code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
-            tuple(make_varnames(nlocals)), filename, method_name, 0, "")
-        # NOTE: May need more globals.
-        fn = new.function(code, __builtins__.__dict__)
-        namespace[method_name] = fn
-    namespace["__java_init__"] = __java_init__
-    # NOTE: Define superclasses properly.
-    cls = new.classobj(str(c.this_class.get_name()), (), namespace)
+    global_names = {}
+    global_names.update(__builtins__.__dict__)
+    for filename in sys.argv[1:]:
+        f = open(filename, "rb")
+        c = ClassFile(f.read())
+        import dis, new
+        namespace = {}
+        for method in c.methods:
+            attribute = method.attributes[0]
+            nargs = len(method.get_descriptor()[0]) + 1
+            t, w = translate(c, attribute.code, attribute.exception_table)
+            nlocals = w.max_locals + 1
+            filename = str(c.attributes[0].get_name())
+            method_name = str(method.get_name())
+            if method_name == "<init>":
+                method_name = "__init__"
+            code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
+                tuple(make_varnames(nlocals)), filename, method_name, 0, "")
+            # NOTE: May need more globals.
+            fn = new.function(code, global_names)
+            namespace[method_name] = fn
+        namespace["__java_init__"] = __java_init__
+        # NOTE: Define superclasses properly.
+        cls = new.classobj(str(c.this_class.get_name()), (), namespace)
+        global_names[cls.__name__] = cls
 
 # vim: tabstop=4 expandtab shiftwidth=4
