@@ -3,6 +3,8 @@
 "Run the test suite."
 
 import os, glob
+import runclass
+import java.lang
 
 def get_test_sources():
     return glob.glob("*.java")
@@ -18,10 +20,11 @@ def compile_test_files(javac):
             print "Compiling", java_file
             os.system(javac + " " + java_file)
 
-def run_test_files(java):
-    for class_ in get_test_classes():
-        print "Running", class_
-        os.system(java + " " + class_)
+def run_test_files():
+    classes = runclass.load_classes(get_test_classes())
+    for cls in classes:
+        print "Running", cls
+        runclass.run_class(cls, [java.lang.String("Test")])
 
 if __name__ == "__main__":
     import sys
@@ -34,12 +37,13 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1:
         javac = sys.argv[1]
     else:
-        print "Cannot find a Java compiler."
-        print "Please specify the full path as an argument to this program"
-        print "or set JAVA_HOME to the JDK installation."
-        sys.exit(1)
+        print "Guessing that javac is your Java compiler."
+        print "If this does not work then please specify the full path as an"
+        print "argument to this program or set JAVA_HOME to refer to the JDK"
+        print "installation."
+        javac = "javac"
 
-    if not os.path.exists(javac):
+    if javac != "javac" and not os.path.exists(javac):
         print "The suggested Java compiler cannot be found."
         sys.exit(1)
 
@@ -47,6 +51,8 @@ if __name__ == "__main__":
 
     os.chdir("tests")
     compile_test_files(javac)
-    run_test_files("runclass.py")
+    run_test_files()
+
+    print "Tests complete."
 
 # vim: tabstop=4 expandtab shiftwidth=4

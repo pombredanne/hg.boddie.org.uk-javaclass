@@ -5,6 +5,21 @@
 import javaclass.classhook
 import java.lang
 
+# NOTE: Simple __this__ package loader to potentially avoid repeated import
+# NOTE: issues exposed by test.py.
+
+def load_classes(class_names):
+
+    "Load the classes with the given 'class_names'."
+
+    module = __import__("__this__", globals(), locals(), class_names)
+    objs = []
+    for class_name in class_names:
+        objs.append(getattr(module, class_name))
+    return objs
+
+# The more general class loader.
+
 def load_class(class_name):
 
     "Load the class with the given 'class_name'."
