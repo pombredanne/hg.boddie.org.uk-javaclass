@@ -63,14 +63,19 @@ class PythonMethodUtils:
     array_sep = "_array_" # was "[]"
     base_seps = ("_", "_") # was "<" and ">"
 
-    def get_python_name(self):
+    def get_unqualified_python_name(self):
         name = self.get_name()
         if str(name) == "<init>":
-            name = "__init__"
+            return "__init__"
         elif str(name) == "<clinit>":
             return "__clinit__"
         else:
-            name = str(name)
+            return str(name)
+
+    def get_python_name(self):
+        name = self.get_unqualified_python_name()
+        if name == "__clinit__":
+            return name
         return name + self.symbol_sep + self._get_descriptor_as_name()
 
     def _get_descriptor_as_name(self):
@@ -621,7 +626,8 @@ class ClassFile:
 
 if __name__ == "__main__":
     import sys
-    f = open(sys.argv[1])
+    f = open(sys.argv[1], "rb")
     c = ClassFile(f.read())
+    f.close()
 
 # vim: tabstop=4 expandtab shiftwidth=4
