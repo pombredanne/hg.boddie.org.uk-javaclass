@@ -155,18 +155,32 @@ class BytecodeWriter:
         del self.jumps[name]
 
     def load_const_ret(self, value):
-        #self.constants_for_exceptions.append(value)
-        #self.load_const(value)
-        self.load_const(None)
+        self.constants_for_exceptions.append(value)
+        self.load_const(value)
 
     def ret(self, index):
         self.load_fast(index)
-        self.end_finally()
+        # Previously, the constant stored on the stack by jsr/jsr_w was stored
+        # in a local variable. In the JVM, extracting the value from the local
+        # variable and jumping can be done at runtime. In the Python VM, any
+        # jump target must be known in advance and written into the bytecode.
+        for constant in self.constants_for_exceptions:
+            self.dup_top()              # Stack: actual-address, actual-address
+            self.load_const(constant)   # Stack: actual-address, actual-address, suggested-address
+            self.compare_op("==")       # Stack: actual-address, result
+            self.jump_to_label(0, "const")
+            self.pop_top()              # Stack: actual-address
+            self.pop_top()              # Stack:
+            self.jump_absolute(constant)
+            self.start_label("const")
+            self.pop_top()              # Stack: actual-address
+        # NOTE: If we get here, something is really wrong.
+        self.pop_top()              # Stack:
 
     def setup_except(self, target):
         self.blocks.append(self.position)
         self.exception_handlers.append(target)
-        print "-", self.position, target
+        #print "-", self.position, target
         self.output.append(opmap["SETUP_EXCEPT"])
         self.position += 1
         self._write_value(0) # To be filled in later
@@ -174,7 +188,7 @@ class BytecodeWriter:
     def setup_finally(self, target):
         self.blocks.append(self.position)
         self.exception_handlers.append(target)
-        print "-", self.position, target
+        #print "-", self.position, target
         self.output.append(opmap["SETUP_FINALLY"])
         self.position += 1
         self._write_value(0) # To be filled in later
@@ -184,7 +198,7 @@ class BytecodeWriter:
         # Convert the "lazy" absolute value.
         current_exception_target = self.exception_handlers.pop()
         target = current_exception_target.get_value()
-        print "*", current_exception_start, target
+        #print "*", current_exception_start, target
         # NOTE: Using 3 as the assumed length of the SETUP_* instruction.
         # NOTE: 8-bit limit.
         self.output[current_exception_start + 1] = target - current_exception_start - 3
@@ -467,8 +481,14 @@ class BytecodeReader:
         self.class_file = class_file
         self.position_mapping = LazyDict()
 
-    def process(self, code, exception_table, program):
+    def process(self, method, program):
         self.java_position = 0
+        self.in_finally = 0
+        self.method = method
+
+        # NOTE: Not guaranteed.
+        attribute = method.attributes[0]
+        code, exception_table = attribute.code, attribute.exception_table
 
         # Produce a structure which permits fast access to exception details.
         exception_block_start = {}
@@ -497,20 +517,23 @@ class BytecodeReader:
             self.position_mapping[self.java_position] = program.position
 
             # Insert exception handling constructs.
-            for exception in exception_block_start.get(self.java_position, []):
+            block_starts = exception_block_start.get(self.java_position, [])
+            for exception in block_starts:
                 # Note that the absolute position is used.
                 if exception.catch_type == 0:
                     program.setup_finally(self.position_mapping[exception.handler_pc])
                 else:
                     program.setup_except(self.position_mapping[exception.handler_pc])
+            if block_starts:
+                self.in_finally = 0
 
             # Insert exception handler details.
             # NOTE: Ensure that pop_block is reachable by possibly inserting it at the start of finally handlers.
             # NOTE: Insert a check for the correct exception at the start of each handler.
             for exception in exception_block_handler.get(self.java_position, []):
                 program.end_exception()
-                #if exception.catch_type == 0:
-                #    program.pop_block()
+                if exception.catch_type == 0:
+                    self.in_finally = 1
 
             # Where handlers are begun, do not produce equivalent bytecode since
             # the first handler instruction typically involves saving a local
@@ -864,8 +887,12 @@ class BytecodeTranslator(BytecodeReader):
 
     def athrow(self, arguments, program):
         # NOTE: NullPointerException not raised where null/None is found on the stack.
-        program.dup_top()
-        program.raise_varargs(1)
+        # If this instruction appears in a finally handler, use end_finally instead.
+        if self.in_finally:
+            program.end_finally()
+        else:
+            program.dup_top()
+            program.raise_varargs(1)
 
     baload = aaload
     bastore = aastore
@@ -1223,10 +1250,46 @@ class BytecodeTranslator(BytecodeReader):
         target_name = target.get_python_name()
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
-        # Stack: objectref, arg1, arg2, ...
-        program.build_tuple(count)          # Stack: objectref, tuple
-        program.rot_two()                   # Stack: tuple, objectref
-        self._invoke(target_name, program)
+
+        # Check for the method name and invoke superclasses where appropriate.
+        if str(self.method.get_name()) == "<init>":
+            program.build_tuple(count + 1)  # Stack: tuple
+            # NOTE: Assume that local 0 is always self.
+            program.load_fast(0)            # Stack: tuple, objectref
+            program.load_attr("__class__")  # Stack: tuple, classref
+            program.load_attr("__bases__")  # Stack: tuple, bases
+            program.dup_top()               # Stack: tuple, bases, bases
+            program.load_global("len")      # Stack: tuple, bases, bases, len
+            program.rot_two()               # Stack: tuple, bases, len, bases
+            program.call_function(1)        # Stack: tuple, bases, #bases
+            program.load_const(0)           # Stack: tuple, bases, #bases, 0
+            program.compare_op("==")        # Stack: tuple, bases, result
+            program.jump_to_label(1, "next")
+            program.pop_top()               # Stack: tuple, bases
+            program.load_const(0)           # Stack: tuple, bases, 0
+            program.binary_subscr()         # Stack: tuple, bases[0]
+            self._invoke(target_name, program)
+            program.jump_to_label(None, "next2")
+            program.start_label("next")
+            program.pop_top()               # Stack: tuple, bases
+            program.pop_top()               # Stack: tuple
+            program.pop_top()               # Stack:
+            program.start_label("next2")
+
+        elif str(target_name) == "__init__":
+            # NOTE: Due to changes with the new instruction's implementation, the
+            # NOTE: stack differs from that stated: objectref, arg1, arg2, ...
+            # Stack: classref, arg1, arg2, ...
+            program.build_tuple(count)          # Stack: classref, tuple
+                                                # NOTE: Stack: objectref, tuple
+            program.load_global("apply")        # Stack: classref, tuple, apply
+            program.rot_three()                 # Stack: apply, classref, tuple
+            program.call_function(2)
+
+        else:
+            program.build_tuple(count)          # Stack: objectref, tuple
+            program.rot_two()                   # Stack: tuple, objectref
+            self._invoke(target_name, program)
 
     """
     def invokespecial(self, arguments, program):
@@ -1279,7 +1342,19 @@ class BytecodeTranslator(BytecodeReader):
         program.load_attr("__class__")  # Stack: tuple, class
         self._invoke(target_name, program)
 
-    invokevirtual = invokeinterface # Ignoring Java rules
+    def invokevirtual (self, arguments, program):
+        # NOTE: This implementation does not perform the necessary checks for
+        # NOTE: signature-based polymorphism.
+        # NOTE: Java rules not specifically obeyed.
+        index = (arguments[0] << 8) + arguments[1]
+        target = self.class_file.constants[index - 1]
+        target_name = target.get_python_name()
+        # Get the number of parameters from the descriptor.
+        count = len(target.get_descriptor()[0])
+        # Stack: objectref, arg1, arg2, ...
+        program.build_tuple(count)          # Stack: objectref, tuple
+        program.rot_two()                   # Stack: tuple, objectref
+        self._invoke(target_name, program)
 
     def ior(self, arguments, program):
         # NOTE: No type checking performed.
@@ -1453,7 +1528,10 @@ class BytecodeTranslator(BytecodeReader):
         target_name = self.class_file.constants[index - 1].get_name()
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_global(str(target_name))
-        program.call_function(0)
+        # NOTE: Unlike Java, we do not provide an object reference. Instead, a
+        # NOTE: class reference is provided, and the invokespecial method's
+        # NOTE: behaviour is changed.
+        #program.call_function(0)
 
     def newarray(self, arguments, program):
         # NOTE: Does not raise NegativeArraySizeException.
@@ -1485,6 +1563,9 @@ class BytecodeTranslator(BytecodeReader):
 
     def ret(self, arguments, program):
         program.ret(arguments[0])
+        # Indicate that the finally handler is probably over.
+        # NOTE: This is seemingly not guaranteed.
+        self.in_finally = 0
 
     def return_(self, arguments, program):
         program.load_const(None)
@@ -1537,14 +1618,14 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: To be implemented.
         return number_of_arguments
 
-def disassemble(class_file, code, exception_table):
+def disassemble(class_file, method):
     disassembler = BytecodeDisassembler(class_file)
-    disassembler.process(code, exception_table, BytecodeDisassemblerProgram())
+    disassembler.process(method, BytecodeDisassemblerProgram())
 
-def translate(class_file, code, exception_table):
+def translate(class_file, method):
     translator = BytecodeTranslator(class_file)
     writer = BytecodeWriter()
-    translator.process(code, exception_table, writer)
+    translator.process(method, writer)
     return translator, writer
 
 def make_varnames(nlocals):
@@ -1552,9 +1633,6 @@ def make_varnames(nlocals):
     for i in range(1, nlocals):
         l.append("_l%s" % i)
     return l[:nlocals]
-
-def __java_init__(self, *args):
-    print "<init>", args
 
 if __name__ == "__main__":
     import sys
@@ -1567,20 +1645,16 @@ if __name__ == "__main__":
         import dis, new
         namespace = {}
         for method in c.methods:
-            attribute = method.attributes[0]
             nargs = len(method.get_descriptor()[0]) + 1
-            t, w = translate(c, attribute.code, attribute.exception_table)
+            t, w = translate(c, method)
             nlocals = w.max_locals + 1
             filename = str(c.attributes[0].get_name())
-            method_name = str(method.get_name())
-            if method_name == "<init>":
-                method_name = "__init__"
+            method_name = str(method.get_python_name())
             code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
                 tuple(make_varnames(nlocals)), filename, method_name, 0, "")
             # NOTE: May need more globals.
             fn = new.function(code, global_names)
             namespace[method_name] = fn
-        namespace["__java_init__"] = __java_init__
         # NOTE: Define superclasses properly.
         cls = new.classobj(str(c.this_class.get_name()), (), namespace)
         global_names[cls.__name__] = cls
