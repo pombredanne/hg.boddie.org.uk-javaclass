@@ -892,6 +892,27 @@ class BytecodeDisassembler(BytecodeReader):
     def generic(self, arguments, program):
         print arguments
 
+    def lookupswitch(self, code, program):
+        print "%5s lookupswitch" % (self.java_position,),
+        d, r = divmod(self.java_position + 1, 4)
+        to_boundary = (4 - r) % 4
+        code = code[to_boundary:]
+        default = classfile.u4(code[0:4])
+        npairs = classfile.u4(code[4:8])
+        print default, npairs
+        return to_boundary + 8 + npairs * 8
+
+    def tableswitch(self, code, program):
+        print "%5s tableswitch" % (self.java_position,),
+        d, r = divmod(self.java_position + 1, 4)
+        to_boundary = (4 - r) % 4
+        code = code[to_boundary:]
+        default = classfile.u4(code[0:4])
+        low = classfile.u4(code[4:8])
+        high = classfile.u4(code[8:12])
+        print default, low, high
+        return to_boundary + 12 + (high - low + 1) * 4
+
 class BytecodeDisassemblerProgram:
     position = 0
     def setup_except(self, target):
@@ -1557,10 +1578,10 @@ class BytecodeTranslator(BytecodeReader):
     lconst_1 = iconst_1
 
     def ldc(self, arguments, program):
-        program.load_const(self.class_file.constants[arguments[0] - 1])
+        program.load_const(self.class_file.constants[arguments[0] - 1].get_value())
 
     def ldc_w(self, arguments, program):
-        program.load_const(self.class_file.constants[(arguments[0] << 8) + arguments[1] - 1])
+        program.load_const(self.class_file.constants[(arguments[0] << 8) + arguments[1] - 1].get_value())
 
     ldc2_w = ldc_w
     ldiv = idiv
@@ -1572,28 +1593,26 @@ class BytecodeTranslator(BytecodeReader):
     lmul = imul
     lneg = ineg
 
-    def lookupswitch(self, arguments, program):
+    def lookupswitch(self, code, program):
 
         # Find the offset to the next 4 byte boundary in the code.
 
-        d, r = divmod(self.java_position, 4)
+        d, r = divmod(self.java_position + 1, 4)
         to_boundary = (4 - r) % 4
 
         # Get the pertinent arguments.
 
-        arguments = arguments[to_boundary:]
-        default = (arguments[0] << 24) + (arguments[1] << 16) + (arguments[2] << 8) + arguments[3]
-        npairs = (arguments[4] << 24) + (arguments[5] << 16) + (arguments[6] << 8) + arguments[7]
+        code = code[to_boundary:]
+        default = classfile.u4(code[0:4])
+        npairs = classfile.u4(code[4:8])
 
         # Process the pairs.
         # NOTE: This is not the most optimal implementation.
 
         pair_index = 8
         for pair in range(0, npairs):
-            match = ((arguments[pair_index] << 24) + (arguments[pair_index + 1] << 16) +
-                (arguments[pair_index + 2] << 8) + arguments[pair_index + 3])
-            offset = signed4((arguments[pair_index + 4] << 24) + (arguments[pair_index + 5] << 16) +
-                (arguments[pair_index + 6] << 8) + arguments[pair_index + 7])
+            match = classfile.u4(code[pair_index:pair_index+4])
+            offset = classfile.s4(code[pair_index+4:pair_index+8])
             # Calculate the branch target.
             java_absolute = self.java_position + offset
             # Generate branching code.
@@ -1608,12 +1627,13 @@ class BytecodeTranslator(BytecodeReader):
             program.start_label("end")
             program.pop_top()                                           # Stack: key
             # Update the index.
-            pair_index += 8
+            pair_index += 4
 
         # Generate the default.
 
         java_absolute = self.java_position + default
         program.jump_absolute(self.position_mapping[java_absolute])
+        return pair_index + to_boundary
 
     lor = ior
     lrem = irem
@@ -1734,27 +1754,26 @@ class BytecodeTranslator(BytecodeReader):
     def swap(self, arguments, program):
         program.rot_two()
 
-    def tableswitch(self, arguments, program):
+    def tableswitch(self, code, program):
 
         # Find the offset to the next 4 byte boundary in the code.
 
-        d, r = divmod(self.java_position, 4)
+        d, r = divmod(self.java_position + 1, 4)
         to_boundary = (4 - r) % 4
 
         # Get the pertinent arguments.
 
-        arguments = arguments[to_boundary:]
-        default = (arguments[0] << 24) + (arguments[1] << 16) + (arguments[2] << 8) + arguments[3]
-        low = (arguments[4] << 24) + (arguments[5] << 16) + (arguments[6] << 8) + arguments[7]
-        high = (arguments[8] << 24) + (arguments[9] << 16) + (arguments[10] << 8) + arguments[11]
+        code = code[to_boundary:]
+        default = classfile.u4(code[0:4])
+        low = classfile.u4(code[4:8])
+        high = classfile.u4(code[8:12])
 
         # Process the jump entries.
         # NOTE: This is not the most optimal implementation.
 
-        jump_index = 8
+        jump_index = 12
         for jump in range(low, high + 1):
-            offset = signed4((arguments[jump_index] << 24) + (arguments[jump_index + 1] << 16) +
-                (arguments[jump_index + 2] << 8) + arguments[jump_index + 3])
+            offset = classfile.s4(code[jump_index:jump_index + 4])
 
             # Calculate the branch target.
 
@@ -1777,12 +1796,13 @@ class BytecodeTranslator(BytecodeReader):
 
             # Update the index.
 
-            jump_index += 8
+            jump_index += 4
 
         # Generate the default.
 
         java_absolute = self.java_position + default
         program.jump_absolute(self.position_mapping[java_absolute])
+        return jump_index + to_boundary
 
     def wide(self, code, program):
         # NOTE: To be implemented.
@@ -2035,18 +2055,23 @@ class ClassTranslator:
         if original_name in ("java/lang/Object", "java/lang/Exception"):
             return ()
         else:
-            full_class_name = str(self.class_file.super_class.get_python_name())
-            class_name_parts = full_class_name.split(".")
-            class_name = class_name_parts[-1]
-            class_module_name = ".".join(class_name_parts[:-1])
-            if class_module_name == "":
-                obj = global_names[class_name]
+            full_this_class_name = str(self.class_file.this_class.get_python_name())
+            this_class_name_parts = full_this_class_name.split(".")
+            this_class_module_name = ".".join(this_class_name_parts[:-1])
+            full_super_class_name = str(self.class_file.super_class.get_python_name())
+            super_class_name_parts = full_super_class_name.split(".")
+            super_class_name = super_class_name_parts[-1]
+            super_class_module_name = ".".join(super_class_name_parts[:-1])
+            if super_class_module_name == "":
+                obj = global_names[super_class_name]
+            elif super_class_module_name == this_class_module_name:
+                obj = global_names[super_class_name]
             else:
-                print "Importing", class_module_name, class_name
-                obj = __import__(class_module_name, global_names, {}, [])
-                for class_name_part in class_name_parts[1:] or [class_name]:
-                    print "*", obj, class_name_part
-                    obj = getattr(obj, class_name_part)
+                print "Importing", super_class_module_name, super_class_name
+                obj = __import__(super_class_module_name, global_names, {}, [])
+                for super_class_name_part in super_class_name_parts[1:] or [super_class_name]:
+                    print "*", obj, super_class_name_part
+                    obj = getattr(obj, super_class_name_part)
             return (obj,)
 
     def make_varnames(self, nlocals):
