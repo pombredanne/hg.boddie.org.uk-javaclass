@@ -1927,7 +1927,7 @@ class ClassTranslator:
                 class_module_name = "__this__"
             class_name = class_name_parts[-1]
             print "*", class_module_name, class_name
-            class_module = __import__(class_module_name, global_names, {}, [class_name])
+            class_module = __import__(class_module_name, global_names, {}, [])
             base = getattr(class_module, class_name)
             return (base,)
 
