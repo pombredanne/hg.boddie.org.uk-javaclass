@@ -85,7 +85,24 @@ class PythonMethodUtils:
 
 class PythonNameUtils:
     def get_python_name(self):
-        return str(self.get_name()).replace("/", ".")
+        # NOTE: This may not be comprehensive.
+        if not str(self.get_name()).startswith("["):
+            return str(self.get_name()).replace("/", ".")
+        else:
+            return self._get_type_name(
+                get_field_descriptor(
+                    str(self.get_name())
+                    )
+                ).replace("/", ".")
+
+    def _get_type_name(self, descriptor_type):
+        base_type, object_type, array_type = descriptor_type
+        if base_type == "L":
+            return object_type
+        elif base_type == "[":
+            return self._get_type_name(array_type)
+        else:
+            return descriptor_base_type_mapping[base_type]
 
 class NameUtils:
     def get_name(self):
@@ -120,64 +137,61 @@ class NameAndTypeUtils:
     def get_class(self):
         return self.class_file.constants[self.class_index - 1]
 
-class DescriptorUtils:
+# Symbol parsing.
 
-    "Symbol parsing."
+def get_method_descriptor(s):
+    assert s[0] == "("
+    params = []
+    s = s[1:]
+    while s[0] != ")":
+        parameter_descriptor, s = _get_parameter_descriptor(s)
+        params.append(parameter_descriptor)
+    if s[1] != "V":
+        return_type, s = _get_field_type(s[1:])
+    else:
+        return_type, s = None, s[1:]
+    return params, return_type
 
-    def _get_method_descriptor(self, s):
-        assert s[0] == "("
-        params = []
-        s = s[1:]
-        while s[0] != ")":
-            parameter_descriptor, s = self._get_parameter_descriptor(s)
-            params.append(parameter_descriptor)
-        if s[1] != "V":
-            return_type, s = self._get_field_type(s[1:])
-        else:
-            return_type, s = None, s[1:]
-        return params, return_type
+def get_field_descriptor(s):
+    return _get_field_type(s)[0]
 
-    def _get_parameter_descriptor(self, s):
-        return self._get_field_type(s)
+def _get_parameter_descriptor(s):
+    return _get_field_type(s)
 
-    def _get_field_descriptor(self, s):
-        return self._get_field_type(s)
+def _get_component_type(s):
+    return _get_field_type(s)
 
-    def _get_component_type(self, s):
-        return self._get_field_type(s)
+def _get_field_type(s):
+    base_type, s = _get_base_type(s)
+    object_type = None
+    array_type = None
+    if base_type == "L":
+        object_type, s = _get_object_type(s)
+    elif base_type == "[":
+        array_type, s = _get_array_type(s)
+    return (base_type, object_type, array_type), s
 
-    def _get_field_type(self, s):
-        base_type, s = self._get_base_type(s)
-        object_type = None
-        array_type = None
-        if base_type == "L":
-            object_type, s = self._get_object_type(s)
-        elif base_type == "[":
-            array_type, s = self._get_array_type(s)
-        return (base_type, object_type, array_type), s
+def _get_base_type(s):
+    if len(s) > 0:
+        return s[0], s[1:]
+    else:
+        return None, s
 
-    def _get_base_type(self, s):
-        if len(s) > 0:
-            return s[0], s[1:]
-        else:
-            return None, s
+def _get_object_type(s):
+    if len(s) > 0:
+        s_end = s.find(";")
+        assert s_end != -1
+        return s[:s_end], s[s_end+1:]
+    else:
+        return None, s
 
-    def _get_object_type(self, s):
-        if len(s) > 0:
-            s_end = s.find(";")
-            assert s_end != -1
-            return s[:s_end], s[s_end+1:]
-        else:
-            return None, s
-
-    def _get_array_type(self, s):
-        if len(s) > 0:
-            return self._get_component_type(s)
-        else:
-            return None, s
+def _get_array_type(s):
+    if len(s) > 0:
+        return _get_component_type(s)
+    else:
+        return None, s
 
 # Constant information.
-# Objects of these classes are not directly aware of the class they reside in.
 
 class ClassInfo(NameUtils, PythonNameUtils):
     def init(self, data, class_file):
@@ -203,7 +217,7 @@ class MethodRefInfo(RefInfo, PythonMethodUtils):
 class InterfaceMethodRefInfo(MethodRefInfo):
     pass
 
-class NameAndTypeInfo(NameUtils, DescriptorUtils, PythonNameUtils):
+class NameAndTypeInfo(NameUtils, PythonNameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.name_index = u2(data[0:2])
@@ -211,10 +225,10 @@ class NameAndTypeInfo(NameUtils, DescriptorUtils, PythonNameUtils):
         return data[4:]
 
     def get_field_descriptor(self):
-        return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+        return get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
     def get_method_descriptor(self):
-        return self._get_method_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+        return get_method_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
 class Utf8Info:
     def init(self, data, class_file):
@@ -279,7 +293,7 @@ class DoubleInfo(LargeNumInfo):
 # Other information.
 # Objects of these classes are generally aware of the class they reside in.
 
-class ItemInfo(NameUtils, DescriptorUtils):
+class ItemInfo(NameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.access_flags = u2(data[0:2])
@@ -290,11 +304,11 @@ class ItemInfo(NameUtils, DescriptorUtils):
 
 class FieldInfo(ItemInfo, PythonNameUtils):
     def get_descriptor(self):
-        return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+        return get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
 class MethodInfo(ItemInfo, PythonMethodUtils):
     def get_descriptor(self):
-        return self._get_method_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+        return get_method_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
 class AttributeInfo:
     def init(self, data, class_file):
@@ -440,7 +454,7 @@ class LocalVariableInfo(NameUtils, PythonNameUtils):
         return data[10:]
 
     def get_descriptor(self):
-        return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+        return get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
 # Exceptions.
 
