@@ -15,7 +15,10 @@ ClassFile) provides a means of importing Java classes and packages directly
 into Python, without the need for a Java virtual machine, so that the classes
 may be instantiated, accessed, run and manipulated just like Python classes,
 and that the resulting objects and methods can be accessed and manipulated
-just like Python objects and methods.</p>
+just like Python objects and methods. It should be possible to run compiled
+Java programs with the Python interpreter and not notice that it isn't the
+Java virtual machine being used - given sufficient library support for the
+program concerned, of course.</p>
 
 <h2>Quick Examples</h2>
 
@@ -97,20 +100,26 @@ Type "help", "copyright", "credits" or "license" for more information.</p>
 
 <p class="python-result">20050401</p>
 
+<h2>Getting Started</h2>
+
+<p>See the <code>README.txt</code> file in the distribution directory.</p>
+
 <h2>Motivation</h2>
 
 <p>Pick one of the following:</p>
 <ul>
   <li>The need/desire to access Java libraries from Python without firing up
-    Java virtual machines or switching to Jython (and thereby losing access
-    to various CPython libraries).</li>
+    Java virtual machines or switching to Jython (and thereby losing
+    convenient access to various CPython libraries).</li>
+  <li>Mixing languages available for the Java runtime with Python.</li>
   <li>Static typing for the Python environment, albeit achieved by writing
     Java or other appropriate languages.</li>
   <li>Having an open source environment from top to bottom to run Java
     bytecode on.</li>
   <li>Experimentation around import hooks, bytecode generation; observation
     of different runtime and type systems interacting.</li>
-  <li>Using Python libraries from Java.</li>
+  <li>Making Python libraries available to Java programs - Tkinter for Java,
+    anyone?!</li>
 </ul>
 
 <h2>Limitations</h2>
@@ -129,7 +138,69 @@ what you want it to:</p>
     files (and .jar archives). Generally, anyone who is anyone in the Python
     pantheon has largely recommended against doing anything with the
     bytecode, despite noble efforts to make exciting things happen by
-    transforming it, optimising it, and so on - </li>
+    transforming it, optimising it, and so on. (Instead, there's been more
+    emphasis on lots of runtime baggage for things which could be done by
+    analysis of the code with modified bytecode being produced as a result,
+    and let's not get started on some of the syntactical enhancements.)
+    Consequently, stability might be an issue for some configurations,
+    especially since CPython doesn't fail particularly graciously with badly
+    behaved bytecode.</li>
+  <li>Some of the translation from Java to Python bytecode takes a few
+    liberties. For example, Java exceptions are handled in ways reminiscent
+    of a 1980s microcomputer assembly language, whereas Python bytecode has
+    higher level constructs for exceptions; this translation can probably be
+    done incorrectly, triggering some kind of bytecode misbehaviour, and we
+    all know what happens then.</li>
+  <li>At the Python level, not all things seem totally right. For example,
+    Java bytecode instructions are used to instantiate and then initialise
+    exceptions just like other objects, and while Python can support this
+    with new-style objects, Python won't let you use new-style objects as
+    exceptions. Consequently, when Java exceptions appear in Python programs,
+    they will be wrapped in old-style exceptions and have to be handled
+    specially.</li>
+  <li>In order to support method dispatch properly, special names are used
+    for the translated methods which include the type information found in
+    the bytecode; things like <code>main___java__lang__String_array_</code>
+    and <code>setValue____I_</code> appear when you look inside classes and
+    objects. When implementing libraries in Python for Java programs, such
+    method naming conventions have to be used because the original code is
+    very specific about which method is being invoked, and for specialised
+    versions of <code>__init__</code> it becomes necessary to do a
+    <code>setattr</code> to add such methods into classes because of various
+    "name mangling" measures in the Python compilation process. Now, many
+    people might start advocating decorators at this point, but not everyone
+    is running the very latest stuff from python.org, and decorators won't
+    help you target a specific specialised method anyway.</li>
+  <li>Imported and translated bytecode is not written out or cached. This
+    means that a fair amount of work happens every time you need to import
+    Java classes, although the generation of .pyc files could be introduced
+    provided that it captured the slightly different import semantics of
+    Java; for example, you can import classes belonging to a package from
+    several places on the PYTHONPATH, and this is something that generally
+    isn't allowed/supported with the classic Python module import
+  mechanisms.</li>
+</ul>
+
+<h2>Suggestions for Python Improvements</h2>
+<ul>
+  <li>Make the bytecode interpreter more robust when encountering badly
+    behaved bytecode, consider bytecode verification and other exciting
+    features.</li>
+  <li>Allow new-style objects as exceptions. Actually, just do something
+    about the whole old-style vs. new-style class thing!</li>
+  <li>Allow possible optimisation for things like statically predetermined
+    method calls. The debate about static typing intersects slightly with the
+    need to define methods with parameters of particular types, but
+    supporting Java-style method "coexistence" (or multimethods, or whatever
+    the proper name is) would presumably involve doing lots of things to the
+    language that were once thought to be highly un-Pythonic. Besides, the
+    need to interoperate with statically typed languages shouldn't dictate
+    the design of Python, especially if better type systems could be adopted
+    instead, leaving the static typing glue for strictly special
+  occasions.</li>
+  <li>Not that threaded Java programs have been run on Python yet, but with
+    Python's current threading architecture I'd expect some
+  disappointment.</li>
 </ul>
 </body>
 </html>

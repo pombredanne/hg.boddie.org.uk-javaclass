@@ -1,3 +1,21 @@
+This file contains some information on the essential concepts and principles
+involved in the use of this software.
+
+Installation
+------------
+
+Usually, I issue this command first:
+
+python setup.py build
+
+The following should, in any case, be sufficient:
+
+python setup.py install
+
+I don't think distutils supports uninstall, but the installation just adds the
+java and javaclass packages to your site-packages directory and the
+runclass.py program to the same bin directory that python resides in.
+
 Class Search Paths
 ------------------
 
@@ -26,17 +44,14 @@ Classes" below).
 Importing Classes
 -----------------
 
-The classhook.py import hook needs to be made available before imports from
-Java classes and libraries (.jar files) can take place. This can be done
-by either...
+In Python, the following statement should be enough to enable Java class
+import:
 
-  * Running the classhook.py file directly and then using the interactive
-    interpreter:
+  import javaclass.classhook
 
-    python -i classhook.py
-
-  * Putting classhook.py in sys.path or PYTHONPATH and importing the
-    classhook module before any code importing Java classes and packages.
+(Other modules reside in the javaclass package, so it is possible to access
+them without changing Python's import mechanisms, should such modification be
+undesirable or unnecessary.)
 
 Importing Non-package Classes
 -----------------------------
@@ -65,22 +80,11 @@ runclass.py program.
     tests directory would be run as follows:
 
     cd tests
-    python ../runclass.py MainTest hello world
-
-    If runclass.py is executable and on the PATH, then the following can be
-    used instead:
-
-    cd tests
     runclass.py MainTest hello world
 
   * Classes residing in packages can be run by ensuring that the packages
     are registered on the PYTHONPATH (see "Class Search Paths" above). Then,
     the testpackage.MainTest class (for example) would be run as follows:
-
-    python runclass.py testpackage.MainTest hello world
-
-    If runclass.py is executable and on the PATH, then the following can be
-    used instead:
 
     runclass.py testpackage.MainTest hello world
 
@@ -95,30 +99,32 @@ about the Python libraries.
 
   1. Compile the skeleton classes:
 
-     javac examples/Qt/qtjava/QWidget.java
+     javac examples/Tkinter/tkjava/*.java
 
   2. Compile the Java classes which use the wrapped Python libraries:
 
-     javac -classpath examples/Qt examples/Qt/WidgetTest.java
+     javac -classpath examples/Tkinter examples/Tkinter/Application.java
 
   3. Run the wrap.py tool on the directory where the skeleton class files
      reside, providing the name of the Python package or module being
      wrapped. This converts the directory into a Python package:
 
-     PYTHONPATH=. python tools/wrap.py examples/Qt/qtjava qt
+     python tools/wrap.py examples/Tkinter/tkjava Tkinter
 
-     Since the Java class files, if left in the processed directory, would
-     be detected and imported using the classhook.py import hook, and since
-     this would result in two conflicting implementations being imported
-     (with possibly the non-functional Java classes being made available
-     instead of the generated wrapper classes), the wrap.py tool removes all
-     processed class files, leaving only Python source files in the
-     processed directory.
+     Since the Java class files, if left in the processed directory, would be
+     detected and imported using the special import hook, and since this would
+     result in two conflicting implementations being imported (with possibly the
+     non-functional Java classes being made available instead of the generated
+     wrapper classes), the wrap.py tool removes all processed class files,
+     leaving only Python source files in the processed directory.
 
   4. The Java classes which use the wrapped Python libraries can now be
-     imported and used as described above. The wrapper package (qtjava in
+     imported and used as described above. The wrapper package (tkjava in
      the above example) needs to reside in sys.path or PYTHONPATH, as must
-     the wrapped library (qt in the above example).
+     the wrapped library (Tkinter in the above example).
+
+     cd examples/Tkinter
+     runclass.py Application
 
 Issues
 ------
