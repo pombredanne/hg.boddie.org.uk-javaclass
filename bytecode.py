@@ -2245,27 +2245,24 @@ class ClassTranslator:
         """
 
         original_name = str(self.class_file.super_class.get_name())
-        if original_name in ("java/lang/Object", "java/lang/Exception"):
-            return (object,)
+        full_this_class_name = str(self.class_file.this_class.get_python_name())
+        this_class_name_parts = full_this_class_name.split(".")
+        this_class_module_name = ".".join(this_class_name_parts[:-1])
+        full_super_class_name = str(self.class_file.super_class.get_python_name())
+        super_class_name_parts = full_super_class_name.split(".")
+        super_class_name = super_class_name_parts[-1]
+        super_class_module_name = ".".join(super_class_name_parts[:-1])
+        if super_class_module_name == "":
+            obj = global_names[super_class_name]
+        elif super_class_module_name == this_class_module_name:
+            obj = global_names[super_class_name]
         else:
-            full_this_class_name = str(self.class_file.this_class.get_python_name())
-            this_class_name_parts = full_this_class_name.split(".")
-            this_class_module_name = ".".join(this_class_name_parts[:-1])
-            full_super_class_name = str(self.class_file.super_class.get_python_name())
-            super_class_name_parts = full_super_class_name.split(".")
-            super_class_name = super_class_name_parts[-1]
-            super_class_module_name = ".".join(super_class_name_parts[:-1])
-            if super_class_module_name == "":
-                obj = global_names[super_class_name]
-            elif super_class_module_name == this_class_module_name:
-                obj = global_names[super_class_name]
-            else:
-                print "Importing", super_class_module_name, super_class_name
-                obj = __import__(super_class_module_name, global_names, {}, [])
-                for super_class_name_part in super_class_name_parts[1:] or [super_class_name]:
-                    print "*", obj, super_class_name_part
-                    obj = getattr(obj, super_class_name_part)
-            return (obj,)
+            print "Importing", super_class_module_name, super_class_name
+            obj = __import__(super_class_module_name, global_names, {}, [])
+            for super_class_name_part in super_class_name_parts[1:] or [super_class_name]:
+                print "*", obj, super_class_name_part
+                obj = getattr(obj, super_class_name_part)
+        return (obj,)
 
     def make_varnames(self, nlocals, method_is_static=0):
 
