@@ -399,6 +399,10 @@ class BytecodeWriter:
         self.output.append(opmap["UNARY_NEGATIVE"])
         self.position += 1
 
+    def slice_1(self):
+        self.output.append(opmap["SLICE+1"])
+        self.position += 1
+
     def compare_op(self, op):
         self.output.append(opmap["COMPARE_OP"])
         self.position += 1
@@ -1266,48 +1270,75 @@ class BytecodeTranslator(BytecodeReader):
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
 
-        # Check for the method name and invoke superclasses where appropriate.
-        # NOTE: This may not be a sufficient test.
-        if str(self.method.get_python_name()) == str(target_name):
-            program.build_tuple(count + 1)  # Stack: tuple
-            # Must use the actual class.
-            # NOTE: Verify this.
-            program.load_global(str(self.class_file.this_class.get_python_name()))
-                                            # Stack: tuple, classref
-            program.load_attr("__bases__")  # Stack: tuple, bases
-            program.dup_top()               # Stack: tuple, bases, bases
-            program.load_global("len")      # Stack: tuple, bases, bases, len
-            program.rot_two()               # Stack: tuple, bases, len, bases
-            program.call_function(1)        # Stack: tuple, bases, #bases
-            program.load_const(0)           # Stack: tuple, bases, #bases, 0
-            program.compare_op("==")        # Stack: tuple, bases, result
-            program.jump_to_label(1, "next")
-            program.pop_top()               # Stack: tuple, bases
-            program.load_const(0)           # Stack: tuple, bases, 0
-            program.binary_subscr()         # Stack: tuple, bases[0]
-            self._invoke(target_name, program)
-            program.jump_to_label(None, "next2")
-            program.start_label("next")
-            program.pop_top()               # Stack: tuple, bases
-            program.pop_top()               # Stack: tuple
-            program.pop_top()               # Stack:
-            program.start_label("next2")
+        # The stack may contain one of the following patterns:
+        # Stack: classref, arg1, arg2, ...
+        # Stack: objectref, arg1, arg2, ...
+        # method == __init__, classref -> classref(arg1, arg2, ...)
+        # method == __init__, objectref == self -> cls.bases[0].__init__(objectref, arg1, arg2, ...)
+        # method == __init__, objectref != self -> should not occur
+        # method != __init__, classref -> classref.method(classref, arg1, arg2, ...)
+        # method != __init__, objectref == self -> cls.bases[0].method(objectref, arg1, arg2, ...)
+        # method != __init__, objectref != self -> should not occur
 
-        # Initialisation outside an initialisation method.
-        elif str(target_name) == "__init__":
-            # NOTE: Due to changes with the new instruction's implementation, the
-            # NOTE: stack differs from that stated: objectref, arg1, arg2, ...
-            # Stack: classref, arg1, arg2, ...
-            program.build_tuple(count)          # Stack: classref, tuple
-                                                # NOTE: Stack: objectref, tuple
-            program.load_global("apply")        # Stack: classref, tuple, apply
-            program.rot_three()                 # Stack: apply, classref, tuple
+        # First, we build a tuple of the reference and arguments.
+        program.build_tuple(count + 1)  # Stack: tuple
+
+        # Then, we test the nature of the reference.
+        program.dup_top()               # Stack: tuple, tuple
+        program.load_const(0)           # Stack: tuple, tuple, 0
+        program.binary_subscr()         # Stack: tuple, reference
+        program.dup_top()               # Stack: tuple, reference, reference
+
+        # Is it self?
+        program.load_fast(0)            # Stack: tuple, reference, reference, self
+        program.compare_op("is")        # Stack: tuple, reference, result
+        program.jump_to_label(1, "is-self")
+        program.pop_top()               # Stack: tuple, reference
+
+        # Is another class or reference.
+        # NOTE: Reference case not covered!
+        if str(target_name) == "__init__":
+            program.rot_two()               # Stack: reference, tuple
+            program.load_const(1)           # Stack: reference, tuple, 1
+            program.slice_1()               # Stack: reference, tuple[1:]
+            program.load_global("apply")    # Stack: reference, tuple, apply
+            program.rot_three()             # Stack: apply, reference, tuple
             program.call_function(2)
-
+            # NOTE: Combinations of new, dup tend to produce interfering extra
+            # NOTE: class references.
+            program.rot_two()               # Stack: objectref, classref
+            program.pop_top()
+            program.jump_to_label(None, "done")
         else:
-            program.build_tuple(count)          # Stack: objectref, tuple
-            program.rot_two()                   # Stack: tuple, objectref
             self._invoke(target_name, program)
+            program.jump_to_label(None, "done")
+
+        # Is self.
+        program.start_label("is-self")
+        program.pop_top()               # Stack: tuple, reference
+        program.pop_top()               # Stack: tuple
+        program.load_global(str(self.class_file.this_class.get_python_name()))
+                                        # Stack: tuple, classref
+        program.load_attr("__bases__")  # Stack: tuple, bases
+        program.dup_top()               # Stack: tuple, bases, bases
+        program.load_global("len")      # Stack: tuple, bases, bases, len
+        program.rot_two()               # Stack: tuple, bases, len, bases
+        program.call_function(1)        # Stack: tuple, bases, #bases
+        program.load_const(0)           # Stack: tuple, bases, #bases, 0
+        program.compare_op("==")        # Stack: tuple, bases, result
+        program.jump_to_label(1, "no-bases")
+        program.pop_top()               # Stack: tuple, bases
+        program.load_const(0)           # Stack: tuple, bases, 0
+        program.binary_subscr()         # Stack: tuple, bases[0]
+        self._invoke(target_name, program)
+        program.jump_to_label(None, "done")
+
+        # No bases found, do no invocation.
+        program.start_label("no-bases")
+        program.pop_top()               # Stack: tuple, bases
+        program.pop_top()               # Stack: tuple
+        program.pop_top()               # Stack:
+        program.start_label("done")
 
     """
     def invokespecial(self, arguments, program):
