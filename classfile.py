@@ -366,7 +366,7 @@ class LocalVariableAttributeInfo(AttributeInfo):
         data = data[6:]
         for i in range(0, self.local_variable_table_length):
             local_variable = LocalVariableInfo()
-            data = local_variable.init(data)
+            data = local_variable.init(data, self.class_file)
             self.local_variable_table.append(local_variable)
         return data
 
