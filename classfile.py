@@ -117,6 +117,9 @@ class NameAndTypeUtils:
             # Some name indexes are zero to indicate special conditions.
             return None
 
+    def get_class(self):
+        return self.class_file.constants[self.class_index - 1]
+
 class DescriptorUtils:
 
     "Symbol parsing."
