@@ -150,7 +150,10 @@ class ClassLoader(ihooks.ModuleLoader):
         # Provide a special name for the current directory.
 
         if name == "__this__":
-            path = "."
+            if dir == None:
+                return (None, ".", ("", "", JAVA_PACKAGE))
+            else:
+                return None
 
         # Where no directory is given, return failure immediately.
 
