@@ -5,4 +5,6 @@ public class Frame {
     }
     public void pack() {
     }
+    public void quit() {
+    }
 }
