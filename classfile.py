@@ -7,17 +7,29 @@ http://java.sun.com/docs/books/vmspec/2nd-edition/html/ClassFile.doc.html
 
 import struct
 
+# Utility functions.
+
+def u1(data):
+    return struct.unpack(">B", data[0:1])[0]
+
+def u2(data):
+    return struct.unpack(">H", data[0:2])[0]
+
+def u4(data):
+    return struct.unpack(">L", data[0:4])[0]
+
 # Constant information.
+# Objects of these classes are not directly aware of the class they reside in.
 
 class ClassInfo:
     def init(self, data):
-        self.name_index = struct.unpack(">H", data[0:2])[0]
+        self.name_index = u2(data[0:2])
         return data[2:]
 
 class RefInfo:
     def init(self, data):
-        self.class_index = struct.unpack(">H", data[0:2])[0]
-        self.name_and_type_index = struct.unpack(">H", data[2:4])[0]
+        self.class_index = u2(data[0:2])
+        self.name_and_type_index = u2(data[2:4])
         return data[4:]
 
 class FieldRefInfo(RefInfo):
@@ -31,13 +43,13 @@ class InterfaceMethodRefInfo(RefInfo):
 
 class NameAndTypeInfo:
     def init(self, data):
-        self.name_index = struct.unpack(">H", data[0:2])[0]
-        self.descriptor_index = struct.unpack(">H", data[2:4])[0]
+        self.name_index = u2(data[0:2])
+        self.descriptor_index = u2(data[2:4])
         return data[4:]
 
 class Utf8Info:
     def init(self, data):
-        self.length = struct.unpack(">H", data[0:2])[0]
+        self.length = u2(data[0:2])
         self.bytes = data[2:2+self.length]
         return data[2+self.length:]
 
@@ -49,12 +61,12 @@ class Utf8Info:
 
 class StringInfo:
     def init(self, data):
-        self.string_index = struct.unpack(">H", data[0:2])[0]
+        self.string_index = u2(data[0:2])
         return data[2:]
 
 class SmallNumInfo:
     def init(self, data):
-        self.bytes = struct.unpack(">L", data[0:4])[0]
+        self.bytes = u4(data[0:4])
         return data[4:]
 
 class IntegerInfo(SmallNumInfo):
@@ -65,8 +77,8 @@ class FloatInfo(SmallNumInfo):
 
 class LargeNumInfo:
     def init(self, data):
-        self.high_bytes = struct.unpack(">L", data[0:4])[0]
-        self.low_bytes = struct.unpack(">L", data[4:8])[0]
+        self.high_bytes = u4(data[0:4])
+        self.low_bytes = u4(data[4:8])
         return data[8:]
 
 class LongInfo(LargeNumInfo):
@@ -76,13 +88,14 @@ class DoubleInfo(LargeNumInfo):
     pass
 
 # Other information.
+# Objects of these classes are generally aware of the class they reside in.
 
 class ItemInfo:
     def init(self, data, class_file):
         self.class_file = class_file
-        self.access_flags = struct.unpack(">H", data[0:2])[0]
-        self.name_index = struct.unpack(">H", data[2:4])[0]
-        self.descriptor_index = struct.unpack(">H", data[4:6])[0]
+        self.access_flags = u2(data[0:2])
+        self.name_index = u2(data[2:4])
+        self.descriptor_index = u2(data[4:6])
         self.attributes, data = self.class_file._get_attributes(data[6:])
         return data
 
@@ -155,7 +168,7 @@ class MethodInfo(ItemInfo):
 
 class AttributeInfo:
     def init(self, data, class_file):
-        self.attribute_length = struct.unpack(">L", data[0:4])[0]
+        self.attribute_length = u4(data[0:4])
         self.info = data[4:4+self.attribute_length]
         return data[4+self.attribute_length:]
 
@@ -166,21 +179,21 @@ class SourceFileAttributeInfo(AttributeInfo):
 
 class ConstantValueAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
-        self.attribute_length = struct.unpack(">L", data[0:4])[0]
-        self.constant_value_index = struct.unpack(">H", data[4:6])[0]
+        self.attribute_length = u4(data[0:4])
+        self.constant_value_index = u2(data[4:6])
         assert 4+self.attribute_length == 6
         return data[4+self.attribute_length:]
 
 class CodeAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
         self.class_file = class_file
-        self.attribute_length = struct.unpack(">L", data[0:4])[0]
-        self.max_stack = struct.unpack(">H", data[4:6])[0]
-        self.max_locals = struct.unpack(">H", data[6:8])[0]
-        self.code_length = struct.unpack(">L", data[8:12])[0]
+        self.attribute_length = u4(data[0:4])
+        self.max_stack = u2(data[4:6])
+        self.max_locals = u2(data[6:8])
+        self.code_length = u4(data[8:12])
         end_of_code = 12+self.code_length
         self.code = data[12:end_of_code]
-        self.exception_table_length = struct.unpack(">H", data[end_of_code:end_of_code+2])[0]
+        self.exception_table_length = u2(data[end_of_code:end_of_code+2])
         self.exception_table = []
         data = data[end_of_code + 2:]
         for i in range(0, self.exception_table_length):
@@ -190,7 +203,20 @@ class CodeAttributeInfo(AttributeInfo):
         return data
 
 class ExceptionsAttributeInfo(AttributeInfo):
-    pass
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.attribute_length = u4(data[0:4])
+        self.number_of_exceptions = u2(data[4:6])
+        self.exception_index_table = []
+        index = 6
+        for i in range(0, self.number_of_exceptions):
+            self.exception_index_table.append(u2(data[index:index+2]))
+            index += 2
+        return data[index:]
+
+    def get_exception(self, i):
+        exception_index = self.exception_index_table[i]
+        return self.class_file.constants[exception_index - 1]
 
 class InnerClassesAttributeInfo(AttributeInfo):
     pass
@@ -212,10 +238,10 @@ class ExceptionInfo:
         self.start_pc, self.end_pc, self.handler_pc, self.catch_type = None, None, None, None
 
     def init(self, data):
-        self.start_pc = struct.unpack(">H", data[0:2])[0]
-        self.end_pc = struct.unpack(">H", data[2:4])[0]
-        self.handler_pc = struct.unpack(">H", data[4:6])[0]
-        self.catch_type = struct.unpack(">H", data[6:8])[0]
+        self.start_pc = u2(data[0:2])
+        self.end_pc = u2(data[2:4])
+        self.handler_pc = u2(data[4:6])
+        self.catch_type = u2(data[6:8])
         return data[8:]
 
 class UnknownTag(Exception):
@@ -247,7 +273,7 @@ class ClassFile:
         self.attributes, s = self._get_attributes(s)
 
     def _decode_const(self, s):
-        tag = struct.unpack(">B", s[0:1])[0]
+        tag = u1(s[0:1])
         if tag == 1:
             const = Utf8Info()
         elif tag == 3:
@@ -304,7 +330,7 @@ class ClassFile:
         return self._get_items_from_table(FieldInfo, number, s)
 
     def _get_attribute_from_table(self, s):
-        attribute_name_index = struct.unpack(">H", s[0:2])[0]
+        attribute_name_index = u2(s[0:2])
         constant_name = self.constants[attribute_name_index - 1].bytes
         if constant_name == "SourceFile":
             attribute = SourceFileAttributeInfo()
@@ -337,38 +363,38 @@ class ClassFile:
         return attributes, s
 
     def _get_constants(self, s):
-        count = struct.unpack(">H", s[0:2])[0]
+        count = u2(s[0:2])
         return self._get_constants_from_table(count, s[2:])
 
     def _get_access_flags(self, s):
-        return struct.unpack(">H", s[0:2])[0], s[2:]
+        return u2(s[0:2]), s[2:]
 
     def _get_this_class(self, s):
-        index = struct.unpack(">H", s[0:2])[0]
+        index = u2(s[0:2])
         return self.constants[index - 1], s[2:]
 
     _get_super_class = _get_this_class
 
     def _get_interfaces(self, s):
         interfaces = []
-        number = struct.unpack(">H", s[0:2])[0]
+        number = u2(s[0:2])
         s = s[2:]
         for i in range(0, number):
-            index = struct.unpack(">H", s[0:2])[0]
+            index = u2(s[0:2])
             interfaces.append(self.constants[index - 1])
             s = s[2:]
         return interfaces, s
 
     def _get_fields(self, s):
-        number = struct.unpack(">H", s[0:2])[0]
+        number = u2(s[0:2])
         return self._get_fields_from_table(number, s[2:])
 
     def _get_attributes(self, s):
-        number = struct.unpack(">H", s[0:2])[0]
+        number = u2(s[0:2])
         return self._get_attributes_from_table(number, s[2:])
 
     def _get_methods(self, s):
-        number = struct.unpack(">H", s[0:2])[0]
+        number = u2(s[0:2])
         return self._get_methods_from_table(number, s[2:])
 
 if __name__ == "__main__":
