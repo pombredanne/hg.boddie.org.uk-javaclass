@@ -9,6 +9,6 @@ setup(
     author_email = "paul@boddie.org.uk",
     url          = "http://www.boddie.org.uk/python/ClassFile.html",
     version      = "0.1",
-    packages     = ["java", "javaclass"],
-    scripts      = ["runclass"]
+    packages     = ["javaclass", "java", "java.lang", "java.security"],
+    scripts      = ["runclass.py"]
     )
