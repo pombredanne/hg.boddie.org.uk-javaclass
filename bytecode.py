@@ -64,6 +64,7 @@ class BytecodeWriter:
                 value = element.value
             else:
                 value = element
+            # NOTE: ValueError gets raised for bad values here.
             output.append(chr(value))
         return "".join(output)
 
@@ -122,6 +123,15 @@ class BytecodeWriter:
             # NOTE: EXTENDED_ARG not yet supported.
             raise ValueError, value
 
+    def _rewrite_value(self, position, value):
+        # NOTE: Assume a 16-bit value.
+        if value <= 0xffff:
+            self.output[position] = (value & 0xff)
+            self.output[position + 1] = ((value & 0xff00) >> 8)
+        else:
+            # NOTE: EXTENDED_ARG not yet supported.
+            raise ValueError, value
+
     def setup_loop(self):
         self.loops.append(self.position)
         self.output.append(opmap["SETUP_LOOP"])
@@ -134,16 +144,12 @@ class BytecodeWriter:
         #print "<", self.blocks, current_loop_real_start
         # Fix the iterator delta.
         # NOTE: Using 3 as the assumed length of the FOR_ITER instruction.
-        # NOTE: 8-bit limit.
         self.jump_absolute(current_loop_real_start)
-        self.output[current_loop_real_start + 1] = self.position - current_loop_real_start - 3
-        self.output[current_loop_real_start + 2] = 0
+        self._rewrite_value(current_loop_real_start + 1, self.position - current_loop_real_start - 3)
         self.pop_block()
         # Fix the loop delta.
         # NOTE: Using 3 as the assumed length of the SETUP_LOOP instruction.
-        # NOTE: 8-bit limit.
-        self.output[current_loop_start + 1] = self.position - current_loop_start - 3
-        self.output[current_loop_start + 2] = 0
+        self._rewrite_value(current_loop_start + 1, self.position - current_loop_start - 3)
 
     def jump_to_label(self, status, name):
         # Record the instruction using the jump.
@@ -162,9 +168,7 @@ class BytecodeWriter:
     def start_label(self, name):
         # Fill in all jump instructions.
         for jump_instruction, following_instruction in self.jumps[name]:
-            # NOTE: 8-bit limit.
-            self.output[jump_instruction + 1] = self.position - following_instruction
-            self.output[jump_instruction + 2] = 0
+            self._rewrite_value(jump_instruction + 1, self.position - following_instruction)
         del self.jumps[name]
 
     def load_const_ret(self, value):
@@ -213,9 +217,7 @@ class BytecodeWriter:
         target = current_exception_target.get_value()
         #print "*", current_exception_start, target
         # NOTE: Using 3 as the assumed length of the SETUP_* instruction.
-        # NOTE: 8-bit limit.
-        self.output[current_exception_start + 1] = target - current_exception_start - 3
-        self.output[current_exception_start + 2] = 0
+        self._rewrite_value(current_exception_start + 1, target - current_exception_start - 3)
 
     def start_handler(self, exc_name):
         # Where handlers are begun, produce bytecode to test the type of
@@ -534,6 +536,8 @@ class BytecodeReader:
         self.method = method
 
         # NOTE: Not guaranteed.
+        if len(method.attributes) == 0:
+            return
         attribute = method.attributes[0]
         code, exception_table = attribute.code, attribute.exception_table
 
