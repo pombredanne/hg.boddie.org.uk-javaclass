@@ -53,6 +53,11 @@ if __name__ == "__main__":
         for method_name, wrapped_method_name in method_names:
             f.write("setattr(%s, '%s', %s.%s)\n" % (class_name, method_name, class_name, wrapped_method_name))
 
+        # Remove the original class.
+
+        print "Removing", filename
+        os.remove(filename)
+
     f.close()
 
 # vim: tabstop=4 expandtab shiftwidth=4
