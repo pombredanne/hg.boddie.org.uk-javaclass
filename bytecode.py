@@ -347,6 +347,12 @@ class BytecodeWriter:
         self.position += 1
         self.update_stack_depth(1)
 
+    def dup_topx(self, count):
+        self.output.append(opmap["DUP_TOPX"])
+        self.position += 1
+        self._write_value(count)
+        self.update_stack_depth(count)
+
     def rot_two(self):
         self.output.append(opmap["ROT_TWO"])
         self.position += 1
@@ -427,6 +433,10 @@ class BytecodeWriter:
 
     def unary_negative(self):
         self.output.append(opmap["UNARY_NEGATIVE"])
+        self.position += 1
+
+    def slice_0(self):
+        self.output.append(opmap["SLICE+0"])
         self.position += 1
 
     def slice_1(self):
@@ -900,7 +910,7 @@ class BytecodeTranslator(BytecodeReader):
         self._newarray(program)
 
     def _newarray(self, program):
-        program.build_list()        # Stack: count, list
+        program.build_list(0)       # Stack: count, list
         program.rot_two()           # Stack: list, count
         program.setup_loop()
         program.load_global("range")
@@ -1576,8 +1586,39 @@ class BytecodeTranslator(BytecodeReader):
         pass
 
     def multianewarray(self, arguments, program):
-        # NOTE: To be implemented.
-        pass
+        index = (arguments[0] << 8) + arguments[1]
+        dimensions = arguments[2]
+        # Stack: count1, ..., countN-1, countN
+        self._newarray(program)             # Stack: count1, ..., countN-1, list
+        for dimension in range(1, dimensions):
+            program.rot_two()               # Stack: count1, ..., list, countN-1
+            program.build_list(0)           # Stack: count1, ..., list, countN-1, new-list
+            program.rot_three()             # Stack: count1, ..., new-list, list, countN-1
+            program.setup_loop()
+            program.load_const(0)           # Stack: count1, ..., new-list, list, countN-1, 0
+            program.rot_two()               # Stack: count1, ..., new-list, list, 0, countN-1
+            program.load_global("range")    # Stack: count1, ..., new-list, list, 0, countN-1, range
+            program.rot_three()             # Stack: count1, ..., new-list, list, range, 0, countN-1
+            program.call_function(2)        # Stack: count1, ..., new-list, list, range-list
+            program.get_iter()              # Stack: count1, ..., new-list, list, iter
+            program.for_iter()              # Stack: count1, ..., new-list, list, iter, value
+            program.pop_top()               # Stack: count1, ..., new-list, list, iter
+            program.rot_three()             # Stack: count1, ..., iter, new-list, list
+            program.slice_0()               # Stack: count1, ..., iter, new-list, list[:]
+            program.dup_top()               # Stack: count1, ..., iter, new-list, list[:], list[:]
+            program.rot_three()             # Stack: count1, ..., iter, list[:], new-list, list[:]
+            program.rot_two()               # Stack: count1, ..., iter, list[:], list[:], new-list
+            program.dup_top()               # Stack: count1, ..., iter, list[:], list[:], new-list, new-list
+            program.load_attr("append")     # Stack: count1, ..., iter, list[:], list[:], new-list, append
+            program.rot_three()             # Stack: count1, ..., iter, list[:], append, list[:], new-list
+            program.rot_three()             # Stack: count1, ..., iter, list[:], new-list, append, list[:]
+            program.call_function(1)        # Stack: count1, ..., iter, list[:], new-list, None
+            program.pop_top()               # Stack: count1, ..., iter, list[:], new-list
+            program.rot_two()               # Stack: count1, ..., iter, new-list, list[:]
+            program.rot_three()             # Stack: count1, ..., list[:], iter, new-list
+            program.rot_three()             # Stack: count1, ..., new-list, list[:], iter
+            program.end_loop()              # Stack: count1, ..., new-list, list[:], iter
+            program.pop_top()               # Stack: count1, ..., new-list
 
     def new(self, arguments, program):
         # This operation is considered to be the same as the calling of the
