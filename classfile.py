@@ -18,16 +18,28 @@ def u2(data):
 def u4(data):
     return struct.unpack(">L", data[0:4])[0]
 
+# Useful mix-ins.
+
+class NameUtils:
+    def get_name(self):
+        if self.name_index != 0:
+            return unicode(self.class_file.constants[self.name_index - 1])
+        else:
+            # Some name indexes are zero to indicate special conditions.
+            return None
+
 # Constant information.
 # Objects of these classes are not directly aware of the class they reside in.
 
-class ClassInfo:
-    def init(self, data):
+class ClassInfo(NameUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.name_index = u2(data[0:2])
         return data[2:]
 
 class RefInfo:
-    def init(self, data):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.class_index = u2(data[0:2])
         self.name_and_type_index = u2(data[2:4])
         return data[4:]
@@ -41,14 +53,16 @@ class MethodRefInfo(RefInfo):
 class InterfaceMethodRefInfo(RefInfo):
     pass
 
-class NameAndTypeInfo:
-    def init(self, data):
+class NameAndTypeInfo(NameUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.name_index = u2(data[0:2])
         self.descriptor_index = u2(data[2:4])
         return data[4:]
 
 class Utf8Info:
-    def init(self, data):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.length = u2(data[0:2])
         self.bytes = data[2:2+self.length]
         return data[2+self.length:]
@@ -60,12 +74,14 @@ class Utf8Info:
         return unicode(self.bytes, "utf-8")
 
 class StringInfo:
-    def init(self, data):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.string_index = u2(data[0:2])
         return data[2:]
 
 class SmallNumInfo:
-    def init(self, data):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.bytes = u4(data[0:4])
         return data[4:]
 
@@ -76,7 +92,8 @@ class FloatInfo(SmallNumInfo):
     pass
 
 class LargeNumInfo:
-    def init(self, data):
+    def init(self, data, class_file):
+        self.class_file = class_file
         self.high_bytes = u4(data[0:4])
         self.low_bytes = u4(data[4:8])
         return data[8:]
@@ -90,7 +107,7 @@ class DoubleInfo(LargeNumInfo):
 # Other information.
 # Objects of these classes are generally aware of the class they reside in.
 
-class ItemInfo:
+class ItemInfo(NameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.access_flags = u2(data[0:2])
@@ -153,11 +170,6 @@ class ItemInfo:
         else:
             return None, s
 
-    # Processed details.
-
-    def get_name(self):
-        return unicode(self.class_file.constants[self.name_index - 1])
-
 class FieldInfo(ItemInfo):
     def get_descriptor(self):
         return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
@@ -174,8 +186,12 @@ class AttributeInfo:
 
 # NOTE: Decode the different attribute formats.
 
-class SourceFileAttributeInfo(AttributeInfo):
-    pass
+class SourceFileAttributeInfo(AttributeInfo, NameUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.attribute_length = u4(data[0:4])
+        # Permit the NameUtils mix-in.
+        self.name_index = self.sourcefile_index = u2(data[4:6])
 
 class ConstantValueAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -199,6 +215,7 @@ class CodeAttributeInfo(AttributeInfo):
         for i in range(0, self.exception_table_length):
             exception = ExceptionInfo()
             data = exception.init(data)
+            self.exception_table.append(exception)
         self.attributes, data = self.class_file._get_attributes(data)
         return data
 
@@ -219,30 +236,90 @@ class ExceptionsAttributeInfo(AttributeInfo):
         return self.class_file.constants[exception_index - 1]
 
 class InnerClassesAttributeInfo(AttributeInfo):
-    pass
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.attribute_length = u4(data[0:4])
+        self.number_of_classes = u2(data[4:6])
+        self.classes = []
+        data = data[6:]
+        for i in range(0, self.number_of_classes):
+            inner_class = InnerClassInfo()
+            data = inner_class.init(data, self.class_file)
+            self.classes.append(inner_class)
+        return data
 
 class SyntheticAttributeInfo(AttributeInfo):
     pass
 
 class LineNumberAttributeInfo(AttributeInfo):
-    pass
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.attribute_length = u4(data[0:4])
+        self.line_number_table_length = u2(data[4:6])
+        self.line_number_table = []
+        data = data[6:]
+        for i in range(0, self.line_number_table_length):
+            line_number = LineNumberInfo()
+            data = line_number.init(data)
+            self.line_number_table.append(line_number)
+        return data
 
 class LocalVariableAttributeInfo(AttributeInfo):
-    pass
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.attribute_length = u4(data[0:4])
+        self.local_variable_table_length = u2(data[4:6])
+        self.local_variable_table = []
+        data = data[6:]
+        for i in range(0, self.local_variable_table_length):
+            local_variable = LocalVariableInfo()
+            data = local_variable.init(data)
+            self.local_variable_table.append(local_variable)
+        return data
 
 class DeprecatedAttributeInfo(AttributeInfo):
     pass
 
-class ExceptionInfo:
-    def __init__(self):
-        self.start_pc, self.end_pc, self.handler_pc, self.catch_type = None, None, None, None
+# Child classes of the attribute information classes.
 
+class ExceptionInfo:
     def init(self, data):
         self.start_pc = u2(data[0:2])
         self.end_pc = u2(data[2:4])
         self.handler_pc = u2(data[4:6])
         self.catch_type = u2(data[6:8])
         return data[8:]
+
+class InnerClassInfo(NameUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.inner_class_info_index = u2(data[0:2])
+        self.outer_class_info_index = u2(data[2:4])
+        # Permit the NameUtils mix-in.
+        self.name_index = self.inner_name_index = u2(data[4:6])
+        self.inner_class_access_flags = u2(data[6:8])
+        return data[8:]
+
+class LineNumberInfo:
+    def init(self, data):
+        self.start_pc = u2(data[0:2])
+        self.line_number = u2(data[2:4])
+        return data[4:]
+
+class LocalVariableInfo(NameUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.start_pc = u2(data[0:2])
+        self.length = u2(data[2:4])
+        self.name_index = u2(data[4:6])
+        self.descriptor_index = u2(data[6:8])
+        self.index = u2(data[8:10])
+        return data[10:]
+
+    def get_descriptor(self):
+        return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+
+# Exceptions.
 
 class UnknownTag(Exception):
     pass
@@ -298,7 +375,10 @@ class ClassFile:
             const = NameAndTypeInfo()
         else:
             raise UnknownTag, tag
-        s = const.init(s[1:])
+
+        # Initialise the constant object.
+
+        s = const.init(s[1:], self)
         return const, s
 
     def _get_constants_from_table(self, count, s):
