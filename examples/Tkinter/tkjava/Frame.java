@@ -7,4 +7,6 @@ public class Frame {
     }
     public void quit() {
     }
+    public void mainloop() {
+    }
 }
