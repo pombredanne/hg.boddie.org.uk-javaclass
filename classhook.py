@@ -20,6 +20,12 @@ class ClassLoader(ihooks.ModuleLoader):
 
     "A class providing support for searching directories for supported files."
 
+    """
+    def find_module(self, name, path=None):
+        print "find_module", name, path
+        return ihooks.ModuleLoader.find_module(self, name, path)
+    """
+
     def find_module_in_dir(self, name, dir):
 
         """
@@ -39,9 +45,28 @@ class ClassLoader(ihooks.ModuleLoader):
             path = os.path.join(dir, name)
 
         print "Processing name", name, "in", dir, "producing", path
+
+        if self._find_module_at_path(path):
+            return (None, path, ("", "", PKG_DIRECTORY))
+        else:
+            return None
+
+    def _find_module_at_path(self, path):
         if os.path.isdir(path):
+
+            # Look for classes in the directory.
+
             if len(glob.glob(os.path.join(path, "*" + os.extsep + "class"))) != 0:
-                return (None, path, ("", "", PKG_DIRECTORY))
+                return 1
+
+            # Otherwise permit importing where directories containing classes exist.
+
+            for filename in os.listdir(path):
+                pathname = os.path.join(path, filename)
+                result = self._find_module_at_path(pathname)
+                if result is not None:
+                    return result
+
         return None
 
     def load_module(self, name, stuff):
@@ -56,6 +81,7 @@ class ClassLoader(ihooks.ModuleLoader):
         # Just go into the directory and find the class files.
 
         file, filename, info = stuff
+        print "*", file, filename, info
 
         # Prepare a dictionary of globals.
 
@@ -76,11 +102,19 @@ class ClassLoader(ihooks.ModuleLoader):
             cls = translator.process(global_names)
             module.__dict__[cls.__name__] = cls
 
+        module.__path__ = [filename]
         return module
 
+"""
 class ClassImporter(ihooks.ModuleImporter):
 
+    def find_head_package(self, parent, name):
+        print "find_head_package", parent, name
+        return ihooks.ModuleImporter.find_head_package(self, parent, name)
+
     def import_it(self, partname, fqname, parent, force_load=0):
+        print "import_it", partname, fqname, parent, force_load
+        print "modules", self.modules
         try:
             return parent.__dict__[partname]
 
@@ -88,8 +122,9 @@ class ClassImporter(ihooks.ModuleImporter):
             return ihooks.ModuleImporter.import_it(
                 self, partname, fqname, parent, force_load
                 )
+"""
 
-importer = ClassImporter(loader=ClassLoader(hooks=ClassHooks()))
+importer = ihooks.ModuleImporter(loader=ClassLoader(hooks=ClassHooks()))
 importer.install()
 
 # vim: tabstop=4 expandtab shiftwidth=4
