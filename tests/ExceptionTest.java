@@ -1,4 +1,5 @@
 public class ExceptionTest {
+    public int last;
 
     public int testThrow(int x) throws java.lang.Exception {
         if (x == 0) {
@@ -51,6 +52,7 @@ public class ExceptionTest {
             x = 1;
         } finally {
             x += 10;
+            last = x;
         }
         return x;
     }
@@ -71,6 +73,7 @@ public class ExceptionTest {
             x = 2;
         } finally {
             x += 10;
+            last = x;
         }
         return x;
     }
@@ -124,6 +127,117 @@ public class ExceptionTest {
             }
         } catch (java.lang.Exception exc) {
             System.err.println("testThrow(2) failed (no exception expected)!");
+        }
+
+        if (test.testCatch(0) != 3) {
+            System.err.println("testCatch(0) failed!");
+        } else {
+            System.out.println("testCatch(0) correct.");
+        }
+        if (test.testCatch(1) != 2) {
+            System.err.println("testCatch(1) failed!");
+        } else {
+            System.out.println("testCatch(1) correct.");
+        }
+        if (test.testCatch(2) != 1) {
+            System.err.println("testCatch(2) failed!");
+        } else {
+            System.out.println("testCatch(2) correct.");
+        }
+
+        if (test.testIncomingCatch(0) != 3) {
+            System.err.println("testIncomingCatch(0) failed!");
+        } else {
+            System.out.println("testIncomingCatch(0) correct.");
+        }
+        if (test.testIncomingCatch(1) != 2) {
+            System.err.println("testIncomingCatch(1) failed!");
+        } else {
+            System.out.println("testIncomingCatch(1) correct.");
+        }
+        if (test.testIncomingCatch(2) != 1) {
+            System.err.println("testIncomingCatch(2) failed!");
+        } else {
+            System.out.println("testIncomingCatch(2) correct.");
+        }
+
+        try {
+            test.testFinally(0);
+            System.err.println("testFinally(0) failed!");
+        } catch (MyException exc) {
+            if (test.last == 13) {
+                System.out.println("testFinally(0) correct: set " + test.last);
+            } else {
+                System.err.println("testFinally(0) failed: set " + test.last);
+            }
+        } catch (java.lang.Exception exc) {
+            System.err.println("testFinally(0) failed!");
+        }
+        try {
+            test.testFinally(1);
+            System.err.println("testFinally(1) failed!");
+        } catch (MyOtherException exc) {
+            if (test.last == 12) {
+                System.out.println("testFinally(1) correct: set " + test.last);
+            } else {
+                System.err.println("testFinally(1) failed: set " + test.last);
+            }
+        } catch (java.lang.Exception exc) {
+            System.err.println("testFinally(1) failed!");
+        }
+        try {
+            if (test.testFinally(2) != 11) {
+                System.err.println("testFinally(2) failed!");
+            } else {
+                System.out.println("testFinally(2) correct.");
+            }
+        } catch (java.lang.Exception exc) {
+            System.err.println("testFinally(2) failed!");
+        }
+
+        try {
+            if (test.testCatchFinally(0) != 13) {
+                System.err.println("testCatchFinally(0) failed!");
+            } else {
+                System.out.println("testCatchFinally(0) correct.");
+            }
+        } catch (MyUncheckedException exc) {
+            System.err.println("testCatchFinally(0) failed!");
+        }
+        try {
+            if (test.testCatchFinally(1) != 12) {
+                System.err.println("testCatchFinally(1) failed!");
+            } else {
+                System.out.println("testCatchFinally(1) correct.");
+            }
+        } catch (MyUncheckedException exc) {
+            System.err.println("testCatchFinally(0) failed!");
+        }
+        try {
+            test.testCatchFinally(2);
+            System.err.println("testCatchFinally(2) failed!");
+        } catch (MyUncheckedException exc) {
+            if (test.last != 12) {
+                System.err.println("testCatchFinally(2) failed!");
+            } else {
+                System.out.println("testCatchFinally(2) correct.");
+            }
+        }
+
+        if (test.testMultipleCatch(0, 1) != 23) {
+            System.err.println("testMultipleCatch(0, 1) failed!");
+        } else {
+            System.out.println("testMultipleCatch(0, 1) correct.");
+        }
+        if (test.testMultipleCatch(1, 2) != 12) {
+            System.err.println("testMultipleCatch(1, 2) failed!");
+        } else {
+            System.out.println("testMultipleCatch(1, 2) correct.");
+        }
+        if (test.testMultipleCatch(2, 0) != 31) {
+            System.err.println("testMultipleCatch(2, 0) failed!");
+        } else {
+            System.out.println("testMultipleCatch(2, 0) correct.");
         }
     }
 }
