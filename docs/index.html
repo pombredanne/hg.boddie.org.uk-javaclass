@@ -1,29 +1,37 @@
 <?xml version="1.0" encoding="iso-8859-1"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-  <title>ClassFile</title>
+  <title>javaclass/ClassFile</title>
   <meta name="generator" content="amaya 8.1a, see http://www.w3.org/Amaya/" />
   <link xmlns:xlink="http://www.w3.org/1999/xlink" href="styles.css"
   rel="stylesheet" type="text/css" />
 </head>
 
 <body>
-<h1>ClassFile</h1>
+<h1>javaclass</h1>
 
-<p>The ClassFile collection of packages and utilities provides a means of
-importing Java classes and packages directly into Python, without the need
-for a Java virtual machine, so that the classes may be instantiated,
-accessed, run and manipulated just like Python classes, and that the
-resulting objects and methods can be accessed and manipulated just like
-Python objects and methods.</p>
+<p>The javaclass collection of packages and utilities (also known as
+ClassFile) provides a means of importing Java classes and packages directly
+into Python, without the need for a Java virtual machine, so that the classes
+may be instantiated, accessed, run and manipulated just like Python classes,
+and that the resulting objects and methods can be accessed and manipulated
+just like Python objects and methods.</p>
 
-<h2>Quick Example</h2>
+<h2>Quick Examples</h2>
+
+<p>It can be quicker to see what this is about by seeing some examples.</p>
+
+<h3>The Not Very Convincing Example</h3>
+
+<p>You can run Java classes by finding one with a main method and executing
+it. Here's a comparison of a freshly prepared Java class being run in Python
+and in a Java virtual machine:</p>
 
 <p class="prompt">cd tests/</p>
 
 <p class="prompt">javac Value.java</p>
 
-<p class="prompt">../runclass.py Value</p>
+<p class="prompt">runclass.py Value</p>
 
 <p class="result">v.getValue() correct: 123<br />
 v.getValue() correct: 456<br />
@@ -49,6 +57,46 @@ v.getValue() == v2.getValue() correct: false<br />
 v2.add(-123) correct: 0<br />
 v2.getValue() correct: 255</p>
 
+<h3>The Slightly More Credible Example</h3>
+
+<p>It can be more interesting to get into Python's interactive mode and then
+start playing around with Java classes:</p>
+
+<p class="python-result">Python 2.2.2 (#2, Jan 21 2005, 16:16:57)<br />
+[GCC 2.96 20000731 (Red Hat Linux 7.3 2.96-112)] on linux2<br />
+Type "help", "copyright", "credits" or "license" for more information.</p>
+
+<p class="python-prompt">import javaclass.classhook</p>
+
+<p class="python-prompt">from __this__ import Value</p>
+
+<p class="python-prompt">dir()</p>
+
+<p class="python-result">['Value', '__builtins__', '__doc__', '__name__',
+'javaclass']</p>
+
+<p class="python-prompt">dir(Value)</p>
+
+<p class="python-result">['__class__', '__delattr__', '__dict__', '__doc__',
+'__getattribute__', '__hash__', '__init__', '__init______I_', '__module__',
+'__new__', '__reduce__', '__repr__', '__setattr__', '__str__', '__weakref__',
+'add', 'add____I_', 'compare', 'compare____I_', 'getClass', 'getClass___',
+'getValue', 'getValue___', 'isPositive', 'isPositive___', 'main',
+'main___java__lang__String_array_', 'newValue', 'newValue___', 'setValue',
+'setValue____I_']</p>
+
+<p class="python-prompt">v = Value(20050121)</p>
+
+<p class="python-prompt">v.getValue()</p>
+
+<p class="python-result">20050121</p>
+
+<p class="python-prompt">v.setValue(20050401)</p>
+
+<p class="python-prompt">v.getValue()</p>
+
+<p class="python-result">20050401</p>
+
 <h2>Motivation</h2>
 
 <p>Pick one of the following:</p>
@@ -62,6 +110,26 @@ v2.getValue() correct: 255</p>
     bytecode on.</li>
   <li>Experimentation around import hooks, bytecode generation; observation
     of different runtime and type systems interacting.</li>
+  <li>Using Python libraries from Java.</li>
+</ul>
+
+<h2>Limitations</h2>
+
+<p>It isn't all great, however. Here are some reasons why this might not do
+what you want it to:</p>
+<ul>
+  <li>It runs on the Python runtime which does not have the security,
+    threading and just-in-time compiler features that people enjoy about Java
+    runtimes, so if what you like to do is to run one big servlet container
+    with lots of classes and threads from different people floating around,
+    this isn't going to protect them from doing all sorts of things to each
+    other and to your system. However, you may take the unfashionable view
+    that the operating system is supposed to do that kind of thing.</li>
+  <li>It works by generating Python bytecode from the Java bytecode in class
+    files (and .jar archives). Generally, anyone who is anyone in the Python
+    pantheon has largely recommended against doing anything with the
+    bytecode, despite noble efforts to make exciting things happen by
+    transforming it, optimising it, and so on - </li>
 </ul>
 </body>
 </html>

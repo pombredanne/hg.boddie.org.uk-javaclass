@@ -58,3 +58,20 @@ background-color: white;
 color: black;
 margin-left: 1em;
 }
+
+p.python-prompt {
+font-family: fixed;
+background-color: silver;
+color: black;
+}
+
+p.python-prompt:before {
+content: ">>> ";
+}
+
+p.python-result {
+font-family: fixed;
+background-color: white;
+color: black;
+margin-left: 2em;
+}
