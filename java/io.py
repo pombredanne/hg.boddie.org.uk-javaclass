@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from java.lang._object import Object, NullPointerException, IndexOutOfBoundsException, Exception as _Exception
+from java._object import Object, NullPointerException, IndexOutOfBoundsException, Exception as _Exception
 
 class InputStream(Object):
     def __init__(self, stream):
