@@ -492,7 +492,12 @@ class BytecodeReader:
 
             # Insert exception handler end details.
             for exception in exception_block_end.get(self.java_position, []):
+                # NOTE: Insert jump beyond handlers.
+                # NOTE: program.jump_forward/absolute(...)
                 program.end_exception()
+                # NOTE: Insert a check for the correct exception at the start of each handler.
+                # NOTE: Insert end finally at end of handlers as well as where "ret" occurs.
+                # NOTE: Ensure that pop_block is reachable by possibly inserting it at the start of finally handlers.
 
             # Where handlers are begun, do not produce equivalent bytecode since
             # the first handler instruction typically involves saving a local
@@ -987,13 +992,13 @@ class BytecodeTranslator(BytecodeReader):
 
     def getfield(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name))
 
     def getstatic(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         program.load_name("self")
         program.load_attr("__class__")
         # NOTE: Using the string version of the name which may contain incompatible characters.
@@ -1183,7 +1188,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Java rules not specifically obeyed.
         index = (arguments[0] << 8) + arguments[1]
         count = arguments[2]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         # Stack: objectref, arg1, arg2, ...
         program.build_tuple(count)          # Stack: objectref, tuple
         program.rot_two()                   # Stack: tuple, objectref
@@ -1195,7 +1200,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Java rules not specifically obeyed.
         index = (arguments[0] << 8) + arguments[1]
         target = self.class_file.constants[index - 1]
-        target_name = target.get_name()
+        target_name = target.get_python_name()
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
         # Stack: objectref, arg1, arg2, ...
@@ -1228,7 +1233,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Java rules not specifically obeyed.
         index = (arguments[0] << 8) + arguments[1]
         target = self.class_file.constants[index - 1]
-        target_name = target.get_name()
+        target_name = target.get_python_name()
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
         # Stack: arg1, arg2, ...
@@ -1429,14 +1434,14 @@ class BytecodeTranslator(BytecodeReader):
 
     def putfield(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         program.rot_two()
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.store_attr(str(target_name))
 
     def putstatic(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         program.load_name("self")
         program.load_attr("__class__")
         # NOTE: Using the string version of the name which may contain incompatible characters.
