@@ -905,7 +905,7 @@ class BytecodeTranslator(BytecodeReader):
 
     def checkcast(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         # NOTE: Using the string version of the name which may contain incompatible characters.
         target_components = str(target_name).split("/")
 
@@ -1210,7 +1210,7 @@ class BytecodeTranslator(BytecodeReader):
 
     def instanceof(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         # NOTE: Using the string version of the name which may contain incompatible characters.
         target_components = str(target_name).split("/")
 
@@ -1252,11 +1252,12 @@ class BytecodeTranslator(BytecodeReader):
         count = len(target.get_descriptor()[0])
 
         # Check for the method name and invoke superclasses where appropriate.
-        if str(self.method.get_name()) == "<init>":
+        if str(self.method.get_python_name()) == "__init__":
             program.build_tuple(count + 1)  # Stack: tuple
-            # NOTE: Assume that local 0 is always self.
-            program.load_fast(0)            # Stack: tuple, objectref
-            program.load_attr("__class__")  # Stack: tuple, classref
+            # Must use the actual class.
+            # NOTE: Verify this.
+            program.load_global(str(self.class_file.this_class.get_python_name()))
+                                            # Stack: tuple, classref
             program.load_attr("__bases__")  # Stack: tuple, bases
             program.dup_top()               # Stack: tuple, bases, bases
             program.load_global("len")      # Stack: tuple, bases, bases, len
@@ -1525,7 +1526,7 @@ class BytecodeTranslator(BytecodeReader):
         # This operation is considered to be the same as the calling of the
         # initialisation method of the given class with no arguments.
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_name()
+        target_name = self.class_file.constants[index - 1].get_python_name()
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_global(str(target_name))
         # NOTE: Unlike Java, we do not provide an object reference. Instead, a
@@ -1656,7 +1657,11 @@ if __name__ == "__main__":
             fn = new.function(code, global_names)
             namespace[method_name] = fn
         # NOTE: Define superclasses properly.
-        cls = new.classobj(str(c.this_class.get_name()), (), namespace)
+        if str(c.super_class.get_name()) not in ("java/lang/Object", "java/lang/Exception"):
+            bases = (global_names[str(c.super_class.get_python_name())],)
+        else:
+            bases = ()
+        cls = new.classobj(str(c.this_class.get_python_name()), bases, namespace)
         global_names[cls.__name__] = cls
 
 # vim: tabstop=4 expandtab shiftwidth=4
