@@ -4,7 +4,9 @@ public class FieldTest {
     protected FieldTestClass c;
     protected FieldTestClass d = null;
     public FieldTestClass e = new FieldTestClass(456);
-    public static FieldTestClass f;
+    public FieldTestClass f = new FieldTestClass(b + e.a);
+    public static FieldTestClass g;
+    public static FieldTestClass h = new FieldTestClass(789);
 }
 
 class FieldTestClass {
