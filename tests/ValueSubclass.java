@@ -30,3 +30,12 @@ public class ValueSubclass extends Value {
         this.value = v.getValue();
     }
 }
+
+// This should confuse the importer since it should be read before Value in
+// alphabetical order.
+
+class SubclassValue extends Value {
+    public SubclassValue(int x) {
+        super(x);
+    }
+}
