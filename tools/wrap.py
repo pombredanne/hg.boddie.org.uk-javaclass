@@ -5,7 +5,7 @@ Wrap Java packages, converting the skeleton Java classes to Python modules which
 connect to concrete Python implementation classes.
 """
 
-import classfile
+import javaclass.classfile
 import glob
 import sys
 import os
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     for filename in glob.glob(os.path.join(directory, "*.class")):
         print "Processing", filename
         cf = open(filename, "rb")
-        c = classfile.ClassFile(cf.read())
+        c = javaclass.classfile.ClassFile(cf.read())
         cf.close()
 
         # Write the class into the source file.
