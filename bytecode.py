@@ -1766,10 +1766,10 @@ class ClassTranslator:
         # NOTE: The code below should use dictionary-based dispatch for better performance.
         program.load_fast(1)                        # Stack: arguments
         for method, fn in methods:
-            program.dup_top()                       # Stack: arguments, arguments
-            program.load_const(1)
-            program.store_fast(2)                   # found = 1
             program.setup_loop()
+            program.dup_top()                       # Stack: arguments, arguments
+            program.load_const(1)                   # Stack: arguments, arguments, 1
+            program.store_fast(2)                   # Stack: arguments, arguments (found = 1)
             # Emit a list of parameter types.
             descriptor_types = method.get_descriptor()[0]
             for descriptor_type in descriptor_types:
@@ -1778,84 +1778,83 @@ class ClassTranslator:
                 if python_type == "instance":
                     # NOTE: This will need extending.
                     python_type = object_type
-                program.load_global(python_type)    # Stack: arguments, type, ...
+                program.load_global(python_type)    # Stack: arguments, arguments, type, ...
             program.build_list(len(descriptor_types))
-                                                    # Stack: arguments, types
+                                                    # Stack: arguments, arguments, types
             # Make a map of arguments and types.
-            program.load_const(None)                # Stack: arguments, types, None
-            program.rot_three()                     # Stack: None, arguments, types
-            program.build_tuple(3)                  # Stack: tuple
-            program.load_global("map")              # Stack: tuple, map
-            program.rot_two()                       # Stack: map, tuple
-            program.load_global("apply")            # Stack: map, tuple, apply
-            program.rot_three()                     # Stack: apply, map, tuple
-            program.call_function(2)                # Stack: tuple (mapping arguments to types)
+            program.load_const(None)                # Stack: arguments, arguments, types, None
+            program.rot_three()                     # Stack: arguments, None, arguments, types
+            program.build_tuple(3)                  # Stack: arguments, tuple
+            program.load_global("map")              # Stack: arguments, tuple, map
+            program.rot_two()                       # Stack: arguments, map, tuple
+            program.load_global("apply")            # Stack: arguments, map, tuple, apply
+            program.rot_three()                     # Stack: arguments, apply, map, tuple
+            program.call_function(2)                # Stack: arguments, list (mapping arguments to types)
             # Loop over each pair.
-            program.get_iter()                      # Stack: iter
-            program.for_iter()                      # Stack: iter, (argument, type)
-            program.unpack_sequence(2)              # Stack: iter, type, argument
-            program.dup_top()                       # Stack: iter, type, argument, argument
-            program.load_const(None)                # Stack: iter, type, argument, argument, None
-            program.compare_op("is")                # Stack: iter, type, argument, result
+            program.get_iter()                      # Stack: arguments, iter
+            program.for_iter()                      # Stack: arguments, iter, (argument, type)
+            program.unpack_sequence(2)              # Stack: arguments, iter, type, argument
+            program.dup_top()                       # Stack: arguments, iter, type, argument, argument
+            program.load_const(None)                # Stack: arguments, iter, type, argument, argument, None
+            program.compare_op("is")                # Stack: arguments, iter, type, argument, result
             # Missing argument?
             program.jump_to_label(0, "present")
-            program.pop_top()                       # Stack: iter, type, argument
-            program.pop_top()                       # Stack: iter, type
-            program.pop_top()                       # Stack: iter
-            program.load_const(0)
-            program.store_fast(2)                   # found = 0
+            program.pop_top()                       # Stack: arguments, iter, type, argument
+            program.pop_top()                       # Stack: arguments, iter, type
+            program.pop_top()                       # Stack: arguments, iter
+            program.load_const(0)                   # Stack: arguments, iter, 0
+            program.store_fast(2)                   # Stack: arguments, iter (found = 0)
             program.break_loop()
             # Argument was present.
             program.start_label("present")
-            program.pop_top()                       # Stack: iter, type, argument
-            program.rot_two()                       # Stack: iter, argument, type
-            program.dup_top()                       # Stack: iter, argument, type, type
-            program.load_const(None)                # Stack: iter, argument, type, type, None
-            program.compare_op("is")                # Stack: iter, argument, type, result
+            program.pop_top()                       # Stack: arguments, iter, type, argument
+            program.rot_two()                       # Stack: arguments, iter, argument, type
+            program.dup_top()                       # Stack: arguments, iter, argument, type, type
+            program.load_const(None)                # Stack: arguments, iter, argument, type, type, None
+            program.compare_op("is")                # Stack: arguments, iter, argument, type, result
             # Missing parameter type?
             program.jump_to_label(0, "present")
-            program.pop_top()                       # Stack: iter, argument, type
-            program.pop_top()                       # Stack: iter, argument
-            program.pop_top()                       # Stack: iter
-            program.load_const(0)
-            program.store_fast(2)                   # found = 0
+            program.pop_top()                       # Stack: arguments, iter, argument, type
+            program.pop_top()                       # Stack: arguments, iter, argument
+            program.pop_top()                       # Stack: arguments, iter
+            program.load_const(0)                   # Stack: arguments, iter, 0
+            program.store_fast(2)                   # Stack: arguments, iter (found = 0)
             program.break_loop()
             # Parameter was present.
             program.start_label("present")
-            program.pop_top()                       # Stack: iter, argument, type
-            program.build_tuple(2)                  # Stack: iter, (argument, type)
-            program.load_global("isinstance")       # Stack: iter, (argument, type), isinstance
-            program.rot_two()                       # Stack: iter, isinstance, (argument, type)
-            program.load_global("apply")            # Stack: iter, isinstance, (argument, type), apply
-            program.rot_three()                     # Stack: iter, apply, isinstance, (argument, type)
-            program.call_function(2)                # Stack: iter, result
+            program.pop_top()                       # Stack: arguments, iter, argument, type
+            program.build_tuple(2)                  # Stack: arguments, iter, (argument, type)
+            program.load_global("isinstance")       # Stack: arguments, iter, (argument, type), isinstance
+            program.rot_two()                       # Stack: arguments, iter, isinstance, (argument, type)
+            program.load_global("apply")            # Stack: arguments, iter, isinstance, (argument, type), apply
+            program.rot_three()                     # Stack: arguments, iter, apply, isinstance, (argument, type)
+            program.call_function(2)                # Stack: arguments, iter, result
             program.jump_to_label(1, "match")
-            program.pop_top()                       # Stack: iter
-            program.load_const(0)
-            program.store_fast(2)                   # found = 0
+            program.pop_top()                       # Stack: arguments, iter
+            program.load_const(0)                   # Stack: arguments, iter, 0
+            program.store_fast(2)                   # Stack: arguments, iter (found = 0)
             program.break_loop()
             # Argument type and parameter type matched.
             program.start_label("match")
-            program.pop_top()                       # Stack: iter
-            program.end_loop()                      # Stack: iter
+            program.pop_top()                       # Stack: arguments, iter
+            program.end_loop()                      # Stack: arguments
             # If all the parameters matched, call the method.
-            program.load_fast(2)                    # Stack: iter, match
+            program.load_fast(2)                    # Stack: arguments, match
             program.jump_to_label(0, "failed")
             # All the parameters matched.
-            program.pop_top()                       # Stack: iter
-            program.load_fast(1)                    # Stack: arguments
-            program.load_fast(0)                    # Stack: arguments, self
+            program.pop_top()                       # Stack: arguments
+            program.dup_top()                       # Stack: arguments, arguments
+            program.load_fast(0)                    # Stack: arguments, arguments, self
             program.load_attr(str(method.get_python_name()))
-                                                    # Stack: arguments, method
-            program.rot_two()                       # Stack: method, arguments
-            program.load_global("apply")            # Stack: method, arguments, apply
-            program.rot_three()                     # Stack: apply, method, arguments
-            program.call_function(2)                # Stack: result
+                                                    # Stack: arguments, arguments, method
+            program.rot_two()                       # Stack: arguments, method, arguments
+            program.load_global("apply")            # Stack: arguments, method, arguments, apply
+            program.rot_three()                     # Stack: arguments, apply, method, arguments
+            program.call_function(2)                # Stack: arguments, result
             program.return_value()
             # Try the next method if arguments or parameters were missing or incorrect.
             program.start_label("failed")
-            program.pop_top()                       # Stack: iter
-            program.pop_top()                       # Stack:
+            program.pop_top()                       # Stack: arguments
         # Raise an exception if nothing matched.
         # NOTE: Improve this.
         program.load_const("No matching method")
