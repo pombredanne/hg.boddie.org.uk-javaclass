@@ -313,7 +313,7 @@ class ClassLoader(ihooks.ModuleLoader):
 
         # Return modules used by external names.
 
-        external_module_names = self._get_external_module_names(external_names)
+        external_module_names = self._get_external_module_names(external_names, name)
 
         # Repeatedly load classes from referenced modules.
 
@@ -323,10 +323,26 @@ class ClassLoader(ihooks.ModuleLoader):
 
         return module
 
-    def _get_external_module_names(self, names):
+    def _get_external_module_names(self, names, current_module_name):
         groups = self._get_names_grouped_by_module(names)
         if groups.has_key(""):
             del groups[""]
+
+        # NOTE: Could filter out the current module and all parent modules.
+        # NOTE:
+        # NOTE: current_module_parts = current_module_name.split(".")
+        # NOTE: while len(current_module_parts) > 0:
+        # NOTE:     try:
+        # NOTE:         del groups[".".join(current_module_parts)]
+        # NOTE:     except KeyError:
+        # NOTE:         pass
+        # NOTE:     del current_module_parts[-1]
+
+        try:
+            del groups[".".join(current_module_name)]
+        except KeyError:
+            pass
+
         return groups.keys()
 
     def _get_names_grouped_by_module(self, names):
@@ -367,19 +383,24 @@ class ClassLoader(ihooks.ModuleLoader):
 
         # Create the classes.
 
-        real_classes = []
+        real_classes = {}
+        real_classes_index = []
         for class_name in init_order:
             try:
                 module, translator = self.loaded_classes[class_name]
                 global_names = module.__dict__
-                real_classes.append((module, translator.get_class(global_names)))
+                if not real_classes.has_key(module):
+                    real_classes[module] = []
+                real_class = translator.get_class(global_names, real_classes)
+                real_classes[class_name].append(real_class)
+                real_classes_index.append((module, real_class))
             except KeyError:
                 # NOTE: Should be a non-Java class.
                 pass
 
         # Finally, call __clinit__ methods for all relevant classes.
 
-        for module, cls in real_classes:
+        for module, cls in real_classes_index:
             if hasattr(cls, "__clinit__"):
                 global_names = module.__dict__
                 eval(cls.__clinit__.func_code, global_names)
