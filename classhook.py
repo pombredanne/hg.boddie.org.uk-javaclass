@@ -6,6 +6,7 @@ from imp import PY_SOURCE, PKG_DIRECTORY, C_BUILTIN
 import classfile, bytecode
 import new
 
+"""
 class ClassHooks(ihooks.Hooks):
 
     "A filesystem hooks class providing information about supported files."
@@ -15,6 +16,7 @@ class ClassHooks(ihooks.Hooks):
         "Return the recognised suffixes."
 
         return ihooks.Hooks.get_suffixes(self) + [(os.extsep + "class", "r", PY_SOURCE)]
+"""
 
 class ClassLoader(ihooks.ModuleLoader):
 
@@ -26,7 +28,7 @@ class ClassLoader(ihooks.ModuleLoader):
         return ihooks.ModuleLoader.find_module(self, name, path)
     """
 
-    def find_module_in_dir(self, name, dir):
+    def find_module_in_dir(self, name, dir, allow_packages=1):
 
         """
         Find the module with the given 'name' in the given directory 'dir'.
@@ -35,12 +37,16 @@ class ClassLoader(ihooks.ModuleLoader):
         from 'dir' and 'name' refers to a directory containing class files.
         """
 
-        dir = dir or "."
+        result = ihooks.ModuleLoader.find_module_in_dir(self, name, dir, allow_packages)
+        if result is not None:
+            return result
 
         # Provide a special name for the current directory.
 
         if name == "__this__":
-            path = dir
+            path = "."
+        elif dir is None:
+            return None
         else:
             path = os.path.join(dir, name)
 
@@ -78,10 +84,15 @@ class ClassLoader(ihooks.ModuleLoader):
         problem occurred in the import operation.
         """
 
+        #result = ihooks.ModuleLoader.load_module(self, name, stuff)
+        #if result is not None:
+        #    return result
+
         # Just go into the directory and find the class files.
 
         file, filename, info = stuff
-        print "*", file, filename, info
+
+        print "Loading", file, filename, info
 
         # Prepare a dictionary of globals.
 
@@ -124,7 +135,7 @@ class ClassImporter(ihooks.ModuleImporter):
                 )
 """
 
-importer = ihooks.ModuleImporter(loader=ClassLoader(hooks=ClassHooks()))
+importer = ihooks.ModuleImporter(loader=ClassLoader(hooks=ihooks.Hooks()))
 importer.install()
 
 # vim: tabstop=4 expandtab shiftwidth=4
