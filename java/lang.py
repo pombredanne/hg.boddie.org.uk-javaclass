@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+import java.io
+import os
+import sys
+
 class Character(object):
     def __init__(self, value):
         raise NotImplementedError, "__init__"
@@ -132,9 +136,9 @@ setattr(Character, "__init____C_", Character.__init__)
 class Class(object):
     def forName(className):
         parts = unicode(className).split(".")
-        obj = __import__(className, globals(), {}, [])
+        obj = __import__(".".join(parts[:-1]), globals(), {}, [])
         for part in parts[1:]:
-            obj = obj[part]
+            obj = getattr(obj, part)
         return obj
 
     forName___java__lang__String = staticmethod(forName)
@@ -157,12 +161,26 @@ class Exception(object):
 setattr(Exception, "__init_____", Exception.__init__)
 setattr(Exception, "__init_____java__lang__String", Exception.__init__)
 
+class IndexOutOfBoundsException(object):
+    def __init__(self, *args):
+        self.args = args
+
+setattr(IndexOutOfBoundsException, "__init_____", IndexOutOfBoundsException.__init__)
+setattr(IndexOutOfBoundsException, "__init_____java__lang__String", IndexOutOfBoundsException.__init__)
+
 class IllegalArgumentException(Exception):
     def __init__(self, *args):
         self.args = args
 
 setattr(IllegalArgumentException, "__init_____", IllegalArgumentException.__init__)
 setattr(IllegalArgumentException, "__init_____java__lang__String", IllegalArgumentException.__init__)
+
+class NullPointerException(object):
+    def __init__(self, *args):
+        self.args = args
+
+setattr(NullPointerException, "__init_____", NullPointerException.__init__)
+setattr(NullPointerException, "__init_____java__lang__String", NullPointerException.__init__)
 
 class SecurityException(Exception):
     def __init__(self, *args):
@@ -359,5 +377,20 @@ class String(object):
 
 setattr(String, "__init_____", String.init__empty)
 setattr(String, "__init_____java__lang__String", String.init__String)
+
+class System(object):
+    in_ = java.io.InputStream(sys.stdin)
+    out = java.io.PrintStream(sys.stdout)
+    err = java.io.PrintStream(sys.stderr)
+
+    def getProperty___java__lang__String(key):
+        try:
+            return os.environ[key]
+        except KeyError:
+            return None
+
+    getProperty___java__lang__String = staticmethod(getProperty___java__lang__String)
+
+setattr(System, "in", System.in_)
 
 # vim: tabstop=4 expandtab shiftwidth=4
