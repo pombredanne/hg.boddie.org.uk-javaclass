@@ -203,7 +203,18 @@ class BytecodeWriter:
         # NOTE: 8-bit limit.
         self.output[current_exception_start + 1] = target - current_exception_start - 3
         self.output[current_exception_start + 2] = 0
-        # NOTE: The POP_BLOCK instruction gets slipped in before this method is called.
+
+    def start_handler(self, exc_name):
+        # Where handlers are begun, produce bytecode to test the type of
+        # the exception.
+        self.dup_top()                      # Stack: exception, exception
+        self.load_global(str(exc_name))     # Stack: exception, exception, handled-exception
+        self.compare_op("exception match")  # Stack: exception, result
+        self.jump_to_label(1, "handler")
+        self.pop_top()
+        self.end_finally()
+        self.start_label("handler")
+        self.pop_top()
 
     # Complicated methods.
 
@@ -534,11 +545,8 @@ class BytecodeReader:
                 program.end_exception()
                 if exception.catch_type == 0:
                     self.in_finally = 1
-
-            # Where handlers are begun, do not produce equivalent bytecode since
-            # the first handler instruction typically involves saving a local
-            # variable that is not applicable to the Python VM.
-            #if not exception_block_handler.get(self.java_position, []):
+                else:
+                    program.start_handler(self.class_file.constants[exception.catch_type - 1].get_python_name())
 
             # Process the bytecode at the current position.
             bytecode = ord(code[self.java_position])
@@ -800,6 +808,8 @@ class BytecodeDisassemblerProgram:
         print "(setup_finally %s)" % target
     def end_exception(self):
         print "(end_exception)"
+    def start_handler(self, exc_name):
+        print "(start_handler %s)" % exc_name
     def pop_block(self):
         print "(pop_block)"
 
