@@ -19,6 +19,9 @@ class BytecodeWriter:
     "A Python bytecode writer."
 
     def __init__(self):
+
+        "Initialise the writer."
+
         # A stack of loop start instructions corresponding to loop blocks.
         self.loops = []
 
@@ -61,6 +64,9 @@ class BytecodeWriter:
         self.external_names = []
 
     def get_output(self):
+
+        "Return the output of the writer as a string."
+
         output = []
         for element in self.output:
             if isinstance(element, LazySubValue):
@@ -72,6 +78,12 @@ class BytecodeWriter:
         return "".join(output)
 
     def get_constants(self):
+
+        """
+        Return a list of constants with ordering significant to the code
+        employing them.
+        """
+
         l = self._get_list(self._invert(self.constants))
         result = []
         for i in l:
@@ -85,15 +97,33 @@ class BytecodeWriter:
     #    return self._get_list(self._invert(self.globals))
 
     def get_names(self):
+
+        """
+        Return a list of names with ordering significant to the code employing
+        them.
+        """
+
         return self._get_list(self._invert(self.names))
 
     def _invert(self, d):
+
+        """
+        Return a new dictionary whose key-to-value mapping is in the inverse of
+        that found in 'd'.
+        """
+
         inverted = {}
         for k, v in d.items():
             inverted[v] = k
         return inverted
 
     def _get_list(self, d):
+
+        """
+        Traverse the dictionary 'd' returning a list whose values appear at the
+        position denoted by each value's key in 'd'.
+        """
+
         l = []
         for i in range(0, len(d.keys())):
             l.append(d[i])
@@ -102,17 +132,34 @@ class BytecodeWriter:
     # Administrative methods.
 
     def update_stack_depth(self, change):
+
+        """
+        Given the stated 'change' in stack depth, update the maximum stack depth
+        where appropriate.
+        """
+
         self.stack_depth += change
         if self.stack_depth > self.max_stack_depth:
             self.max_stack_depth = self.stack_depth
 
     def update_locals(self, index):
+
+        """
+        Given the stated 'index' of a local variable, update the maximum local
+        variable index where appropriate.
+        """
+
         if index > self.max_locals:
             self.max_locals = index
 
     # Special methods.
 
     def _write_value(self, value):
+
+        """
+        Write the given 'value' at the current output position.
+        """
+
         if isinstance(value, LazyValue):
             # NOTE: Assume a 16-bit value.
             self.output.append(value.values[0])
@@ -127,6 +174,11 @@ class BytecodeWriter:
             raise ValueError, value
 
     def _rewrite_value(self, position, value):
+
+        """
+        At the given output 'position', rewrite the given 'value'.
+        """
+
         # NOTE: Assume a 16-bit value.
         if value <= 0xffff:
             self.output[position] = (value & 0xff)
@@ -587,10 +639,22 @@ class BytecodeReader:
     "A generic Java bytecode reader."
 
     def __init__(self, class_file):
+
+        """
+        Initialise the reader with a 'class_file' containing essential
+        information for any bytecode inspection activity.
+        """
+
         self.class_file = class_file
         self.position_mapping = LazyDict()
 
     def process(self, method, program):
+
+        """
+        Process the given 'method' (obtained from the class file), using the
+        given 'program' to write translated Python bytecode instructions.
+        """
+
         self.java_position = 0
         self.in_finally = 0
         self.method = method
@@ -602,7 +666,15 @@ class BytecodeReader:
             if isinstance(attribute, classfile.CodeAttributeInfo):
                 code, exception_table = attribute.code, attribute.exception_table
                 break
+
+        # Where no code was found, write a very simple placeholder routine.
+        # This is useful for interfaces and abstract classes.
+        # NOTE: Assess the correctness of doing this. An exception should really
+        # NOTE: be raised instead.
+
         if code is None:
+            program.load_const(None)
+            program.return_value()
             return
 
         # Produce a structure which permits fast access to exception details.
@@ -690,6 +762,14 @@ class BytecodeReader:
             self.java_position = next_java_position
 
     def process_bytecode(self, mnemonic, number_of_arguments, code, program):
+
+        """
+        Process a bytecode instruction with the given 'mnemonic' and
+        'number_of_arguments'. The 'code' parameter contains the full method
+        code so that argument data can be inspected. The 'program' parameter is
+        used to produce a Python translation of the instruction.
+        """
+
         if number_of_arguments is not None:
             arguments = []
             for j in range(0, number_of_arguments):
@@ -1888,7 +1968,8 @@ class ClassTranslator:
         # NOTE: The code below should use dictionary-based dispatch for better performance.
 
         for method, fn in methods:
-            method_is_static = real_method_name != "<init>" and method_is_static or classfile.has_flags(method.access_flags, [classfile.STATIC])
+            method_is_static = real_method_name != "<init>" and method_is_static or \
+                classfile.has_flags(method.access_flags, [classfile.STATIC])
 
             if method_is_static:
                 program.load_fast(0)                # Stack: arguments
@@ -2177,6 +2258,8 @@ class ClassTranslator:
         for i in range(1, nlocals):
             l.append("_l%s" % i)
         return l[:nlocals]
+
+# Test functions, useful for tracing generated bytecode operations.
 
 def _map(*args):
     print args
