@@ -2,7 +2,7 @@
 
 "A program to run Java class files."
 
-import classhook
+import javaclass.classhook
 import java.lang
 
 def load_class(class_name):
