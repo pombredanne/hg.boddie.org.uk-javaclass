@@ -1,11 +1,12 @@
 public class ValueSubclass extends Value {
+    public Value tmp;
 
     /**
      * Test of subclass initialisation with super usage and foreign object initialisation.
      */
     public ValueSubclass(int x) {
         super(x);
-        Value tmp = new Value(42);
+        tmp = new Value(42);
     }
 
     /**
