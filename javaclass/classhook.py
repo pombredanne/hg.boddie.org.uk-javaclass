@@ -166,7 +166,6 @@ class ClassLoader(ihooks.ModuleLoader):
         else:
             archive, archive_path, path = self._get_archive_and_path(dir, name)
 
-        #print "Processing name", name, "in", dir, "producing", path, "within archive", archive
 
         if self._find_module_at_path(path, archive):
             if archive is not None:
@@ -204,7 +203,6 @@ class ClassLoader(ihooks.ModuleLoader):
 
     def _find_module_at_path(self, path, archive):
         if self.hooks.path_isdir(path, archive):
-            #print "Looking in", path, "using archive", archive
 
             # Look for classes in the directory.
 
@@ -213,7 +211,6 @@ class ClassLoader(ihooks.ModuleLoader):
 
             # Otherwise permit importing where directories containing classes exist.
 
-            #print "Filenames are", self.hooks.listdir(path, archive)
             for filename in self.hooks.listdir(path, archive):
                 pathname = self.hooks.path_join(path, filename)
                 result = self._find_module_at_path(pathname, archive)
@@ -237,36 +234,39 @@ class ClassLoader(ihooks.ModuleLoader):
         find_module method produces such a list.
         """
 
-        loaded_module_names = []
-        loaded_classes = {}
-        main_module = self._load_module(name, stuff, loaded_module_names, loaded_classes)
+        module = self._not_java_module(name, stuff)
+        if module is not None:
+            return module
+
+        if not hasattr(self, "loaded_classes"):
+            self.loaded_classes = {}
+            top_level = 1
+        else:
+            top_level = 0
+
+        main_module = self._load_module(name, stuff)
 
         # Initialise the loaded classes.
 
-        for module, classes in loaded_classes.items():
-            self._init_classes(module, classes)
+        if top_level:
+            self._init_classes()
+            self.loaded_classes = {}
 
         return main_module
 
-    def _filter_names(self, module_names, loaded_module_names):
-        for module_name in loaded_module_names:
-            try:
-                i = module_names.index(module_name)
-                del module_names[i]
-            except ValueError:
-                pass
+    def _not_java_module(self, name, stuff):
 
-    def _load_module(self, name, stuff, loaded_module_names, loaded_classes):
-        #print "_load_module", name, loaded_module_names
-        loaded_module_names.append(name)
-
-        # Detect non-Java modules.
+        "Detect non-Java modules."
 
         for stuff_item in stuff:
             archive, filename, info = stuff_item
             suffix, mode, datatype = info
             if datatype not in (JAVA_PACKAGE, JAVA_ARCHIVE):
                 return ihooks.ModuleLoader.load_module(self, name, stuff_item)
+
+        return None
+
+    def _load_module(self, name, stuff):
 
         # Set up the module.
         # A union of all locations is placed in the module's path.
@@ -292,26 +292,22 @@ class ClassLoader(ihooks.ModuleLoader):
 
             archive, filename, info = stuff_item
             suffix, mode, datatype = info
-            #print "Loading", archive, filename, info
 
             # Get the real filename.
 
             filename = self._get_path_in_archive(filename)
-            #print "Real filename", filename
 
             # Load the class files.
 
             for class_filename in self.hooks.matching(filename, os.extsep + "class", archive):
-                #print "Loading class", class_filename
                 s = self.hooks.read(class_filename, archive)
                 class_file = classfile.ClassFile(s)
                 translator = bytecode.ClassTranslator(class_file)
-                classes[str(class_file.this_class.get_name())] = translator
                 external_names += translator.process(global_names)
 
-        # Record the classes found under the current module.
+                # Record the classes found under the current module.
 
-        loaded_classes[module] = classes
+                self.loaded_classes[str(class_file.this_class.get_name())] = module, translator
 
         # Return modules used by external names.
 
@@ -319,56 +315,11 @@ class ClassLoader(ihooks.ModuleLoader):
 
         # Repeatedly load classes from referenced modules.
 
-        self._filter_names(external_module_names, loaded_module_names)
         for module_name in external_module_names:
-            if module_name not in loaded_module_names:
-
-                # Emulate the __import__ function, loading the requested module
-                # but returning the top-level module.
-
-                self._import(module_name, global_names, loaded_module_names, loaded_classes)
+            new_module = __import__(module_name, global_names)
+            global_names[module_name.split(".")[0]] = new_module
 
         return module
-
-    def _import(self, module_name, parent, loaded_module_names, loaded_classes):
-
-        # Where no Java-based submodules can be found, look for
-        # Python modules instead.
-
-        new_stuff = self.find_module(module_name)
-        #print "_", new_stuff
-        if not new_stuff:
-            new_module = __import__(module_name, parent)
-            #print "P", new_module
-            parent[module_name.split(".")[0]] = new_module
-            return new_module
-
-        module_name_parts = module_name.split(".")
-        path = []
-        for module_name_part in module_name_parts:
-            path.append(module_name_part)
-            path_str = ".".join(path)
-            if self.modules_dict().has_key(path_str):
-
-                # Add submodules to existing modules.
-
-                new_module = self.modules_dict()[path_str]
-                parent = new_module.__dict__
-                #print "-", path_str
-
-            else:
-
-                # Find submodules.
-
-                new_stuff = self.find_module(path_str)
-                new_module = self._load_module(path_str, new_stuff, loaded_module_names, loaded_classes)
-                #print "J", new_module
-                #print "+", path_str, new_module
-                parent[module_name_part] = new_module
-                parent = new_module.__dict__
-
-        #print "->", new_module.__dict__.keys()
-        return new_module
 
     def _get_external_module_names(self, names):
         groups = self._get_names_grouped_by_module(names)
@@ -391,19 +342,45 @@ class ClassLoader(ihooks.ModuleLoader):
         module_name = ".".join(full_name_parts[:-1])
         return module_name, class_name
 
-    def _init_classes(self, module, classes):
-        global_names = module.__dict__
+    def _init_classes(self):
 
-        # First, create the classes.
+        # Order the classes according to inheritance.
+
+        init_order = []
+        for class_name, (module, translator) in self.loaded_classes.items():
+            super_class = translator.get_super_class()
+
+            # Insert the super class before any mention of the current class.
+
+            if super_class is not None:
+                super_class_name = str(super_class.get_name())
+                if super_class_name not in init_order:
+                    if class_name not in init_order:
+                        init_order.append(super_class_name)
+                    else:
+                        index = init_order.index(class_name)
+                        init_order.insert(index, super_class_name)
+
+            if class_name not in init_order:
+                init_order.append(class_name)
+
+        # Create the classes.
 
         real_classes = []
-        for name, translator in classes.items():
-            real_classes.append(translator.get_class(global_names))
+        for class_name in init_order:
+            try:
+                module, translator = self.loaded_classes[class_name]
+                global_names = module.__dict__
+                real_classes.append((module, translator.get_class(global_names)))
+            except KeyError:
+                # NOTE: Should be a non-Java class.
+                pass
 
         # Finally, call __clinit__ methods for all relevant classes.
 
-        for cls in real_classes:
+        for module, cls in real_classes:
             if hasattr(cls, "__clinit__"):
+                global_names = module.__dict__
                 eval(cls.__clinit__.func_code, global_names)
 
 ihooks.ModuleImporter(loader=ClassLoader(hooks=ClassHooks())).install()

@@ -2326,6 +2326,9 @@ class ClassTranslator:
 
         return cls
 
+    def get_super_class(self):
+        return self.class_file.super_class
+
     def get_base_classes(self, global_names):
 
         """
