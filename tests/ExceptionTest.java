@@ -55,12 +55,14 @@ public class ExceptionTest {
         return x;
     }
 
-    public int testCatchFinally(int x) {
+    public int testCatchFinally(int x) throws MyUncheckedException {
         try {
             if (x == 0) {
                 throw new MyException();
             } else if (x == 1) {
                 throw new MyOtherException();
+            } else if (x == 2) {
+                throw new MyUncheckedException();
             }
             x = 1;
         } catch (MyException exc) {
@@ -72,12 +74,38 @@ public class ExceptionTest {
         }
         return x;
     }
+
+    public int testMultipleCatch(int x, int y) {
+        try {
+            x = testThrow(x);
+        } catch (MyException exc) {
+            x = 3;
+        } catch (MyOtherException exc) {
+            x = 2;
+        } catch (java.lang.Exception exc) {
+            x = -1; // Should be unreachable, really.
+        }
+
+        try {
+            x += 10 * testThrow(y);
+        } catch (MyException exc) {
+            x += 30;
+        } catch (MyOtherException exc) {
+            x += 20;
+        } catch (java.lang.Exception exc) {
+            x += -10; // Should be unreachable, really.
+        }
+        return x;
+    }
 }
 
 class MyException extends java.lang.Exception {
 }
 
 class MyOtherException extends java.lang.Exception {
+}
+
+class MyUncheckedException extends java.lang.Exception {
 }
 
 // vim: tabstop=4 expandtab shiftwidth=4
