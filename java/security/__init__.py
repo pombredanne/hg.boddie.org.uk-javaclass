@@ -49,4 +49,7 @@ class AccessController(java.lang.Object):
         # NOTE: Implement properly.
         return AccessControlContext()
 
+class SecureClassLoader(java.lang.ClassLoader):
+    pass
+
 # vim: tabstop=4 expandtab shiftwidth=4
