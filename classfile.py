@@ -58,6 +58,11 @@ def has_flags(flags, desired):
 # Useful mix-ins.
 
 class PythonMethodUtils:
+    symbol_sep = "___" # was "$"
+    type_sep = "__" # replaces "/"
+    array_sep = "_array_" # was "[]"
+    base_seps = ("_", "_") # was "<" and ">"
+
     def get_python_name(self):
         name = self.get_name()
         if str(name) == "<init>":
@@ -66,22 +71,22 @@ class PythonMethodUtils:
             return "__clinit__"
         else:
             name = str(name)
-        return name + "$" + self._get_descriptor_as_name()
+        return name + self.symbol_sep + self._get_descriptor_as_name()
 
     def _get_descriptor_as_name(self):
         l = []
         for descriptor_type in self.get_descriptor()[0]:
             l.append(self._get_type_as_name(descriptor_type))
-        return "$".join(l)
+        return self.symbol_sep.join(l)
 
     def _get_type_as_name(self, descriptor_type, s=""):
         base_type, object_type, array_type = descriptor_type
         if base_type == "L":
-            return object_type + s
+            return object_type.replace("/", self.type_sep) + s
         elif base_type == "[":
-            return self._get_type_as_name(array_type, s + "[]")
+            return self._get_type_as_name(array_type, s + self.array_sep)
         else:
-            return "<" + base_type + ">" + s
+            return self.base_seps[0] + base_type + self.base_seps[1] + s
 
 class PythonNameUtils:
     def get_python_name(self):

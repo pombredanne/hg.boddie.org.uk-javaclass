@@ -137,7 +137,7 @@ class ClassLoader(ihooks.ModuleLoader):
         else:
             archive, archive_path, path = self._get_archive_and_path(dir, name)
 
-        print "Processing name", name, "in", dir, "producing", path, "within archive", archive
+        #print "Processing name", name, "in", dir, "producing", path, "within archive", archive
 
         if self._find_module_at_path(path, archive):
             if archive is not None:
@@ -175,7 +175,7 @@ class ClassLoader(ihooks.ModuleLoader):
 
     def _find_module_at_path(self, path, archive):
         if self.hooks.path_isdir(path, archive):
-            print "Looking in", path, "using archive", archive
+            #print "Looking in", path, "using archive", archive
 
             # Look for classes in the directory.
 
@@ -184,7 +184,7 @@ class ClassLoader(ihooks.ModuleLoader):
 
             # Otherwise permit importing where directories containing classes exist.
 
-            print "Filenames are", self.hooks.listdir(path, archive)
+            #print "Filenames are", self.hooks.listdir(path, archive)
             for filename in self.hooks.listdir(path, archive):
                 pathname = self.hooks.path_join(path, filename)
                 result = self._find_module_at_path(pathname, archive)
@@ -209,7 +209,7 @@ class ClassLoader(ihooks.ModuleLoader):
         if datatype not in (JAVA_PACKAGE, JAVA_ARCHIVE):
             return ihooks.ModuleLoader.load_module(self, name, stuff)
 
-        print "Loading", archive, filename, info
+        #print "Loading", archive, filename, info
 
         # Set up the module.
 
@@ -229,13 +229,13 @@ class ClassLoader(ihooks.ModuleLoader):
         # Get the real filename.
 
         filename = self._get_path_in_archive(filename)
-        print "Real filename", filename
+        #print "Real filename", filename
 
         # Load the class files.
 
         class_files = {}
         for class_filename in self.hooks.matching(filename, os.extsep + "class", archive):
-            print "Loading class", class_filename
+            #print "Loading class", class_filename
             s = self.hooks.read(class_filename, archive)
             class_file = classfile.ClassFile(s)
             class_files[str(class_file.this_class.get_name())] = class_file

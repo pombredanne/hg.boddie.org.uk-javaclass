@@ -1240,9 +1240,7 @@ class BytecodeTranslator(BytecodeReader):
         pass
 
     def i2c(self, arguments, program):
-        program.load_global("chr")  # Stack: value, chr
-        program.rot_two()           # Stack: chr, value
-        program.call_function(1)    # Stack: result
+        pass
 
     def i2d(self, arguments, program):
         program.load_global("float")    # Stack: value, float
