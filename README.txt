@@ -12,8 +12,8 @@ The following should, in any case, be sufficient:
 
   python setup.py install
 
-I don't think distutils supports uninstall, but the installation just adds the
-java and javaclass packages to your site-packages directory and the
+I don't think distutils supports uninstall, but the installation just adds
+the java and javaclass packages to your site-packages directory and the
 runclass.py program to the same bin directory that python resides in.
 
 Testing
@@ -57,8 +57,8 @@ import:
   import javaclass.classhook
 
 (Other modules reside in the javaclass package, so it is possible to access
-them without changing Python's import mechanisms, should such modification be
-undesirable or unnecessary.)
+them without changing Python's import mechanisms, should such modification
+be undesirable or unnecessary.)
 
 Importing Non-package Classes
 -----------------------------
@@ -118,12 +118,13 @@ about the Python libraries.
 
      python tools/wrap.py examples/Tkinter/tkjava Tkinter
 
-     Since the Java class files, if left in the processed directory, would be
-     detected and imported using the special import hook, and since this would
-     result in two conflicting implementations being imported (with possibly the
-     non-functional Java classes being made available instead of the generated
-     wrapper classes), the wrap.py tool removes all processed class files,
-     leaving only Python source files in the processed directory.
+     Since the Java class files, if left in the processed directory, would
+     be detected and imported using the special import hook, and since this
+     would result in two conflicting implementations being imported (with
+     possibly the non-functional Java classes being made available instead
+     of the generated wrapper classes), the wrap.py tool removes all
+     processed class files, leaving only Python source files in the
+     processed directory.
 
   4. The Java classes which use the wrapped Python libraries can now be
      imported and used as described above. The wrapper package (tkjava in
@@ -135,6 +136,9 @@ about the Python libraries.
 
 Issues
 ------
+
+The test program crashes, fairly quickly under Python 2.4, too. There seems
+to be some kind of memory allocation problem.
 
 Investigate better exception raising. Currently, exceptions have to be
 derived from object so that object.__new__ can be used upon them. However,
@@ -150,7 +154,8 @@ Release Procedures
 
 Update the javaclass/__init__.py __version__ attribute.
 Update the release notes (see above).
-Check the setup.py file and ensure that all package directories are mentioned.
+Check the setup.py file and ensure that all package directories are
+mentioned.
 Tag, export.
 Rename ClassFile to javaclass (and add the release to the directory name).
 Archive, upload.
