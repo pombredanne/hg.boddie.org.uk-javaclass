@@ -260,11 +260,6 @@ class ClassLoader(ihooks.ModuleLoader):
             global_names = module.__dict__
             global_names["__builtins__"] = __builtins__
 
-            # Process each class file, producing a genuine Python class.
-
-            class_files = []
-            classes = []
-
             # Get the real filename.
 
             filename = self._get_path_in_archive(filename)
@@ -312,27 +307,69 @@ class ClassLoader(ihooks.ModuleLoader):
 
                 position += 1
 
-            class_files = [class_files[class_name] for class_name in class_file_index]
+            # Process each class file, producing a genuine Python class.
+            # Create the classes, but establish a proper initialisation order.
 
-            for class_file in class_files:
+            class_file_init_index = []
+            class_file_init = {}
+
+            for class_name in class_file_index:
+                print "* Class", class_name
+                class_file = class_files[class_name]
                 translator = bytecode.ClassTranslator(class_file)
                 cls, external_names = translator.process(global_names)
                 module.__dict__[cls.__name__] = cls
-                classes.append((cls, class_file))
 
-                # Import the local names.
+                # Process external names.
+
+                this_class_name_parts = class_file.this_class.get_python_name().split(".")
+                this_class_module, this_class_name = this_class_name_parts[:-1], this_class_name_parts[-1]
 
                 for external_name in external_names:
+                    print "* Name", external_name
                     external_name_parts = external_name.split(".")
-                    if len(external_name_parts) > 1:
-                        external_module_name = ".".join(external_name_parts[:-1])
+                    external_class_module, external_class_name = external_name_parts[:-1], external_name_parts[-1]
+
+                    # Names not local to this package need importing.
+
+                    if len(external_name_parts) > 1 and this_class_module != external_class_module:
+
+                        external_module_name = ".".join(external_class_module)
                         print "* Importing", external_module_name
                         obj = __import__(external_module_name, global_names, {}, [])
                         global_names[external_name_parts[0]] = obj
 
+                    # Names local to this package may affect initialisation order.
+
+                    elif external_class_name not in class_file_init_index:
+                        try:
+                            this_class_name_index = class_file_init_index.index(this_class_name)
+
+                            # Either insert this name before the current class's
+                            # name.
+
+                            print "* Inserting", external_class_name
+                            class_file_init_index.insert(this_class_name_index, external_class_name)
+
+                        except ValueError:
+
+                            # Or add this name in anticipation of the current
+                            # class's name appearing.
+
+                            print "* Including", external_class_name
+                            class_file_init_index.append(external_class_name)
+
+                # Add this class name to the initialisation index.
+
+                if class_name not in class_file_init_index:
+                    class_file_init_index.append(this_class_name)
+                class_file_init[this_class_name] = (cls, class_file)
+
             # Finally, call __clinit__ methods for all relevant classes.
 
-            for cls, class_file in classes:
+            print "** Initialisation order", class_file_init_index
+            for class_name in class_file_init_index:
+                cls, class_file = class_file_init[class_name]
                 print "**", cls, class_file
                 if hasattr(cls, "__clinit__"):
                     eval(cls.__clinit__.func_code, global_names)

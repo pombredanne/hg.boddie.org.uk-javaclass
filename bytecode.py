@@ -284,14 +284,14 @@ class BytecodeWriter:
         # NOTE: Using 3 as the assumed length of the SETUP_* instruction.
         self._rewrite_value(current_exception_start + 1, target - current_exception_start - 3)
 
-    def start_handler(self, exc_name):
+    def start_handler(self, exc_name, class_file):
 
         # Where handlers are begun, produce bytecode to test the type of
         # the exception.
         # NOTE: Since RAISE_VARARGS and END_FINALLY are not really documented,
         # NOTE: we store the top of the stack and use it later to trigger the
         # NOTE: magic processes when re-raising.
-        self.use_external_name(exc_name)
+        self.use_external_name(str(exc_name))
 
         self.rot_two()                      # Stack: raised-exception, exception
         self.dup_top()                      # Stack: raised-exception, exception, exception
@@ -304,7 +304,8 @@ class BytecodeWriter:
         self.load_attr("args")              # Stack: raised-exception, exception, args
         self.load_const(0)                  # Stack: raised-exception, exception, args, 0
         self.binary_subscr()                # Stack: raised-exception, exception, exception-object
-        self.load_global(str(exc_name))     # Stack: raised-exception, exception, exception-object, handled-exception
+        load_class_name(class_file, str(exc_name), self)
+                                            # Stack: raised-exception, exception, exception-object, handled-exception
         self.load_global("isinstance")      # Stack: raised-exception, exception, exception-object, handled-exception, isinstance
         self.rot_three()                    # Stack: raised-exception, exception, isinstance, exception-object, handled-exception
         self.call_function(2)               # Stack: raised-exception, exception, result
@@ -632,6 +633,21 @@ def signed2(value):
 def signed4(value):
     return signed(value, 0x80000000)
 
+def load_class_name(class_file, full_class_name, program):
+    this_class_name = str(class_file.this_class.get_python_name())
+    this_class_parts = this_class_name.split(".")
+    class_parts = full_class_name.split(".")
+
+    # Only use the full path if different from this class's path.
+
+    if class_parts[:-1] != this_class_parts[:-1]:
+        program.use_external_name(full_class_name)
+        program.load_global(class_parts[0])
+        for class_part in class_parts[1:]:
+            program.load_attr(class_part)   # Stack: classref
+    else:
+        program.load_global(class_parts[-1])
+
 # Bytecode conversion.
 
 class BytecodeReader:
@@ -736,7 +752,7 @@ class BytecodeReader:
                 if exception.catch_type == 0:
                     self.in_finally = 1
                 else:
-                    program.start_handler(self.class_file.constants[exception.catch_type - 1].get_python_name())
+                    program.start_handler(self.class_file.constants[exception.catch_type - 1].get_python_name(), self.class_file)
 
             # Process the bytecode at the current position.
 
@@ -1034,7 +1050,7 @@ class BytecodeDisassemblerProgram:
         print "(setup_finally %s)" % target
     def end_exception(self):
         print "(end_exception)"
-    def start_handler(self, exc_name):
+    def start_handler(self, exc_name, class_file):
         print "(start_handler %s)" % exc_name
     def pop_block(self):
         print "(pop_block)"
@@ -1042,17 +1058,6 @@ class BytecodeDisassemblerProgram:
 class BytecodeTranslator(BytecodeReader):
 
     "A Java bytecode translator which uses a Python bytecode writer."
-
-    def _load_class_name(self, full_class_name, program):
-        this_class_name = str(self.class_file.this_class.get_python_name())
-        class_parts = full_class_name.split(".")
-        if full_class_name != this_class_name:
-            program.use_external_name(full_class_name)
-            program.load_global(class_parts[0])
-            for class_part in class_parts[1:]:
-                program.load_attr(class_part)   # Stack: classref
-        else:
-            program.load_global(class_parts[-1])
 
     def aaload(self, arguments, program):
         # NOTE: No type checking performed.
@@ -1158,17 +1163,30 @@ class BytecodeTranslator(BytecodeReader):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
         program.use_external_name(target_name)
-
-        # NOTE: Using the string version of the name which may contain incompatible characters.
-        target_components = str(target_name).split("/")
-
+        program.dup_top()                   # Stack: objectref, objectref
+        program.load_const(None)            # Stack: objectref, objectref, None
+        program.compare_op("is")            # Stack: objectref, result
+        program.jump_to_label(1, "next")
+        program.pop_top()                   # Stack: objectref
         program.dup_top()                   # Stack: objectref, objectref
         program.load_global("isinstance")   # Stack: objectref, objectref, isinstance
         program.rot_two()                   # Stack: objectref, isinstance, objectref
-        program.load_global(target_components[0])
-        for target_component in target_components[1:]:
-            program.load_attr(target_component)
-        program.call_function(2)            # Stack: objectref
+        load_class_name(self.class_file, target_name, program)
+        program.call_function(2)            # Stack: objectref, result
+        program.jump_to_label(1, "next")
+        program.pop_top()                   # Stack: objectref
+        program.pop_top()                   # Stack:
+        program.use_external_name("java.lang.ClassCastException")
+        load_class_name(self.class_file, "java.lang.ClassCastException", program)
+        program.call_function(0)            # Stack: exception
+        # Wrap the exception in a Python exception.
+        program.load_global("Exception")    # Stack: exception, Exception
+        program.rot_two()                   # Stack: Exception, exception
+        program.call_function(1)            # Stack: exception
+        program.raise_varargs(1)
+        # NOTE: This seems to put another object on the stack.
+        program.start_label("next")
+        program.pop_top()                   # Stack: objectref
 
     def d2f(self, arguments, program):
         pass
@@ -1302,7 +1320,8 @@ class BytecodeTranslator(BytecodeReader):
         # Get the class name instead of the fully qualified name.
 
         full_class_name = target.get_class().get_python_name()
-        self._load_class_name(full_class_name, program)
+        program.use_external_name(full_class_name)
+        load_class_name(self.class_file, full_class_name, program)
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name))
 
@@ -1468,15 +1487,9 @@ class BytecodeTranslator(BytecodeReader):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
         program.use_external_name(target_name)
-
-        # NOTE: Using the string version of the name which may contain incompatible characters.
-        target_components = str(target_name).split("/")
-
         program.load_global("isinstance")   # Stack: objectref, isinstance
         program.rot_two()                   # Stack: isinstance, objectref
-        program.load_global(target_components[0])
-        for target_component in target_components[1:]:
-            program.load_attr(target_component)
+        load_class_name(self.class_file, target_name, program)
         program.call_function(2)            # Stack: result
 
     def _invoke(self, target_name, program):
@@ -1522,7 +1535,8 @@ class BytecodeTranslator(BytecodeReader):
 
         full_class_name = target.get_class().get_python_name()
         if full_class_name not in ("java.lang.Object", "java.lang.Exception"):
-            self._load_class_name(full_class_name, program)
+            program.use_external_name(full_class_name)
+            load_class_name(self.class_file, full_class_name, program)
             self._invoke(target_name, program)
 
         # Remove Python None return value.
@@ -1551,7 +1565,8 @@ class BytecodeTranslator(BytecodeReader):
 
         full_class_name = target.get_class().get_python_name()
         if full_class_name not in ("java.lang.Object", "java.lang.Exception"):
-            self._load_class_name(full_class_name, program)
+            program.use_external_name(full_class_name)
+            load_class_name(self.class_file, full_class_name, program)
             self._invoke(target_name, program)
 
     def invokevirtual (self, arguments, program):
@@ -1666,7 +1681,7 @@ class BytecodeTranslator(BytecodeReader):
             program.load_const(const.get_value())
             program.call_function(1)
         else:
-            program.load_const(const)
+            program.load_const(const.get_value())
 
     def ldc_w(self, arguments, program):
         const = self.class_file.constants[(arguments[0] << 8) + arguments[1] - 1]
@@ -1678,7 +1693,7 @@ class BytecodeTranslator(BytecodeReader):
             program.load_const(const.get_value())
             program.call_function(1)
         else:
-            program.load_const(const)
+            program.load_const(const.get_value())
 
     ldc2_w = ldc_w
     ldiv = idiv
@@ -1800,7 +1815,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_global("object")
         program.load_attr("__new__")
-        self._load_class_name(target_name, program)
+        load_class_name(self.class_file, target_name, program)
         program.call_function(1)
 
     def newarray(self, arguments, program):
@@ -1831,7 +1846,8 @@ class BytecodeTranslator(BytecodeReader):
         # Get the class name instead of the fully qualified name.
 
         full_class_name = target.get_class().get_python_name()
-        self._load_class_name(full_class_name, program)
+        program.use_external_name(full_class_name)
+        load_class_name(self.class_file, full_class_name, program)
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.store_attr(str(target_name))
 
