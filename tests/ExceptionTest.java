@@ -97,6 +97,35 @@ public class ExceptionTest {
         }
         return x;
     }
+
+    public static void main(String[] args) {
+        ExceptionTest test = new ExceptionTest();
+        try {
+            test.testThrow(0);
+            System.err.println("testThrow(0) failed!");
+        } catch (MyException exc) {
+            System.out.println("testThrow(0) correct: " + exc);
+        } catch (java.lang.Exception exc) {
+            System.err.println("testThrow(0) failed (MyException expected)!");
+        }
+        try {
+            test.testThrow(1);
+            System.err.println("testThrow(1) failed!");
+        } catch (MyOtherException exc) {
+            System.out.println("testThrow(1) correct: " + exc);
+        } catch (java.lang.Exception exc) {
+            System.err.println("testThrow(1) failed (MyOtherException expected)!");
+        }
+        try {
+            if (test.testThrow(2) != 1) {
+                System.err.println("testThrow(2) failed!");
+            } else {
+                System.out.println("testThrow(2) correct.");
+            }
+        } catch (java.lang.Exception exc) {
+            System.err.println("testThrow(2) failed (no exception expected)!");
+        }
+    }
 }
 
 class MyException extends java.lang.Exception {
