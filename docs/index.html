@@ -29,76 +29,63 @@ program concerned, of course.</p>
 <p>You can run Java classes by finding one with a main method and executing
 it. Here's a comparison of a freshly prepared Java class being run in Python
 and in a Java virtual machine respectively:</p>
-
-<p class="prompt">cd tests/</p>
-
-<p class="prompt">javac Value.java</p>
-
-<p class="prompt">runclass.py Value</p>
-
-<p class="result">v.getValue() correct: 123<br />
-v.getValue() correct: 456<br />
-v.isPositive() correct: 1<br />
-v.isPositive() correct: 0<br />
-v.compare(-790) correct: -1<br />
-v.compare(-788) correct: 1<br />
-v.compare(-789) correct: 0<br />
-v.getValue() == v2.getValue() correct: 0<br />
-v2.add(-123) correct: 0<br />
-v2.getValue() correct: 255</p>
-
-<p class="prompt">java Value</p>
-
-<p class="result">v.getValue() correct: 123<br />
-v.getValue() correct: 456<br />
-v.isPositive() correct: true<br />
-v.isPositive() correct: false<br />
-v.compare(-790) correct: -1<br />
-v.compare(-788) correct: 1<br />
-v.compare(-789) correct: 0<br />
-v.getValue() == v2.getValue() correct: false<br />
-v2.add(-123) correct: 0<br />
-v2.getValue() correct: 255</p>
+<pre class="Prompt">cd tests/</pre>
+<pre class="Prompt">javac Value.java</pre>
+<pre class="PromptRequest">runclass.py Value</pre>
+<pre class="PromptResponse">v.getValue() correct: 123
+v.getValue() correct: 456
+v.isPositive() correct: 1
+v.isPositive() correct: 0
+v.compare(-790) correct: -1
+v.compare(-788) correct: 1
+v.compare(-789) correct: 0
+v.getValue() == v2.getValue() correct: 0
+v2.add(-123) correct: 0
+v2.getValue() correct: 255</pre>
+<pre class="PromptRequest">java Value</pre>
+<pre class="PromptResponse">v.getValue() correct: 123
+v.getValue() correct: 456
+v.isPositive() correct: true
+v.isPositive() correct: false
+v.compare(-790) correct: -1
+v.compare(-788) correct: 1
+v.compare(-789) correct: 0
+v.getValue() == v2.getValue() correct: false
+v2.add(-123) correct: 0
+v2.getValue() correct: 255</pre>
 
 <h3>The Slightly More Credible Example</h3>
 
 <p>It can be more interesting to get into Python's interactive mode and then
 start playing around with Java classes:</p>
-
-<p class="python-result">Python 2.2.2 (#2, Jan 21 2005, 16:16:57)<br />
-[GCC 2.96 20000731 (Red Hat Linux 7.3 2.96-112)] on linux2<br />
-Type "help", "copyright", "credits" or "license" for more information.</p>
-
-<p class="python-prompt">import javaclass.classhook</p>
-
-<p class="python-prompt">from __this__ import Value</p>
-
-<p class="python-prompt">dir()</p>
-
-<p class="python-result">['Value', '__builtins__', '__doc__', '__name__',
-'javaclass']</p>
-
-<p class="python-prompt">dir(Value)</p>
-
-<p class="python-result">['__class__', '__delattr__', '__dict__', '__doc__',
+<pre class="PromptResponse">Python 2.2.2 (#2, Jan 21 2005, 16:16:57)
+[GCC 2.96 20000731 (Red Hat Linux 7.3 2.96-112)] on linux2
+Type "help", "copyright", "credits" or "license" for more information.</pre>
+<pre class="PythonPrompt">import javaclass.classhook</pre>
+<pre class="PythonPrompt">from __this__ import Value</pre>
+<pre class="PythonPrompt">dir()</pre>
+<pre class="PromptResponse">['Value', '__builtins__', '__doc__', '__name__',
+'javaclass']</pre>
+<pre class="PythonPrompt">dir(Value)</pre>
+<pre class="PromptResponse">['__class__', '__delattr__', '__dict__', '__doc__',
 '__getattribute__', '__hash__', '__init__', '__init______I_', '__module__',
 '__new__', '__reduce__', '__repr__', '__setattr__', '__str__', '__weakref__',
 'add', 'add____I_', 'compare', 'compare____I_', 'getClass', 'getClass___',
 'getValue', 'getValue___', 'isPositive', 'isPositive___', 'main',
 'main___java__lang__String_array_', 'newValue', 'newValue___', 'setValue',
-'setValue____I_']</p>
+'setValue____I_']</pre>
+<pre class="PythonPrompt">v = Value(20050121)</pre>
+<pre class="PythonPrompt">v.getValue()</pre>
+<pre class="PromptResponse">20050121</pre>
+<pre class="PythonPrompt">v.setValue(20050401)</pre>
+<pre class="PythonPrompt">v.getValue()</pre>
+<pre class="PromptResponse">20050401</pre>
 
-<p class="python-prompt">v = Value(20050121)</p>
+<h2>Copyright and Licence</h2>
 
-<p class="python-prompt">v.getValue()</p>
-
-<p class="python-result">20050121</p>
-
-<p class="python-prompt">v.setValue(20050401)</p>
-
-<p class="python-prompt">v.getValue()</p>
-
-<p class="python-result">20050401</p>
+<p>The javaclass software is distributed under the terms of the GNU Lesser
+General Public Licence (LGPL). See the file <code>COPYING.txt</code> in the
+<code>docs</code> directory within the source code distribution.</p>
 
 <h2>Getting Started</h2>
 

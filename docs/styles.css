@@ -1,77 +1,116 @@
-body {
+.Selected {
+background-color: silver;
+color: black;
+font-family: sans-serif;
+}
+
+.Selected A:link { color: black; }
+.Selected A:visited { color: black; }
+.Selected A:active { color: black; }
+
+.Unselected {
+background-color: gray;
+color: black;
+font-family: sans-serif;
+}
+
+.Unselected A:link { color: black; }
+.Unselected A:visited { color: black; }
+.Unselected A:active { color: black; }
+
+.Main { vertical-align: top; }
+
+BODY {
 background-color: white;
 font-size: 12pt;
 }
 
-h1 {
+H1 {
 color: navy;
 font-family: sans-serif;
 font-size: 20pt;
 }
 
-h2 {
+H2 {
 color: navy;
 font-family: sans-serif;
 font-size: 18pt;
 }
 
-h3 {
+H3 {
 color: navy;
 font-family: sans-serif;
 font-size: 16pt;
 }
 
-h4 {
+H4 {
 color: navy;
 font-family: sans-serif;
 font-size: 15pt;
 }
 
-h5 {
+H5 {
 color: navy;
 font-family: sans-serif;
 font-size: 14pt;
 }
 
-ul {
+UL {
 list-style-type: disc;
 }
 
-pre {
+.MainHeading {
+color: black;
+background-color: gray;
+font-family: sans-serif;
+font-size: 14pt;
+font-weight: bold;
+vertical-align: top;
+}
+
+.SubHeading {
+color: black;
 background-color: silver;
-color: black;
+font-family: sans-serif;
+font-size: 14pt;
+font-weight: bold;
+vertical-align: top;
 }
 
-p.prompt {
-font-family: fixed;
+.CellHeading {
+color: black;
 background-color: silver;
-color: black;
+font-family: sans-serif;
+font-size: 12pt;
+font-weight: bold;
+vertical-align: top;
 }
 
-p.prompt:before {
-content: "$ ";
+.CellContent {
+font-size: 12pt;
+vertical-align: top;
 }
 
-p.result {
-font-family: fixed;
-background-color: white;
-color: black;
-margin-left: 1em;
+PRE.Python {
+background-color: #e0e0e0;
+width: 100%;
 }
 
-p.python-prompt {
-font-family: fixed;
-background-color: silver;
-color: black;
+.Submodule {
+color: #ff0000
 }
 
-p.python-prompt:before {
-content: ">>> ";
+PRE.Prompt {
+background-color: #c0c0c0;
+width: 100%;
 }
 
-p.python-result {
-font-family: fixed;
-background-color: white;
-color: black;
-margin-left: 2em;
+PRE.PromptRequest {
+background-color: #b0d0b0;
+width: 100%;
+}
+
+PRE.PromptResponse {
+background-color: #d0b0b0;
+width: 100%;
 }
