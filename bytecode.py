@@ -7,6 +7,7 @@ http://java.sun.com/docs/books/vmspec/2nd-edition/html/Instructions2.doc.html
 NOTE: Synchronized constructs are not actually supported.
 """
 
+import classfile
 from dis import opmap, cmp_op # for access to Python bytecode values and operators
 from UserDict import UserDict
 import new
@@ -18,6 +19,9 @@ class BytecodeWriter:
     "A Python bytecode writer."
 
     def __init__(self):
+        # A stack of loop start instructions corresponding to loop blocks.
+        self.loops = []
+
         # A stack of loop block or exception block start positions.
         self.blocks = []
 
@@ -119,19 +123,27 @@ class BytecodeWriter:
             raise ValueError, value
 
     def setup_loop(self):
-        self.blocks.append(self.position)
+        self.loops.append(self.position)
         self.output.append(opmap["SETUP_LOOP"])
         self.position += 1
         self._write_value(0) # To be filled in later
 
     def end_loop(self):
-        current_loop_start = self.blocks.pop()
-        self.jump_absolute(current_loop_start)
+        current_loop_start = self.loops.pop()
+        current_loop_real_start = self.blocks.pop()
+        #print "<", self.blocks, current_loop_real_start
+        # Fix the iterator delta.
+        # NOTE: Using 3 as the assumed length of the FOR_ITER instruction.
+        # NOTE: 8-bit limit.
+        self.jump_absolute(current_loop_real_start)
+        self.output[current_loop_real_start + 1] = self.position - current_loop_real_start - 3
+        self.output[current_loop_real_start + 2] = 0
+        self.pop_block()
+        # Fix the loop delta.
         # NOTE: Using 3 as the assumed length of the SETUP_LOOP instruction.
         # NOTE: 8-bit limit.
         self.output[current_loop_start + 1] = self.position - current_loop_start - 3
         self.output[current_loop_start + 2] = 0
-        self.pop_block()
 
     def jump_to_label(self, status, name):
         # Record the instruction using the jump.
@@ -272,14 +284,24 @@ class BytecodeWriter:
         self.update_stack_depth(-1)
         self.update_locals(index)
 
-    # Normal bytecode generators.
-
     def for_iter(self):
         self.blocks.append(self.position)
+        #print ">", self.blocks
         self.output.append(opmap["FOR_ITER"])
         self.position += 1
         self._write_value(0) # To be filled in later
         self.update_stack_depth(1)
+
+    def break_loop(self):
+        self.output.append(opmap["BREAK_LOOP"])
+        self.position += 1
+        self.jump_absolute(self.blocks[-1])
+
+    # Normal bytecode generators.
+
+    def get_iter(self):
+        self.output.append(opmap["GET_ITER"])
+        self.position += 1
 
     def jump_if_false(self, offset=0):
         self.output.append(opmap["JUMP_IF_FALSE"])
@@ -427,6 +449,11 @@ class BytecodeWriter:
     def end_finally(self):
         self.output.append(opmap["END_FINALLY"])
         self.position += 1
+
+    def unpack_sequence(self, count):
+        self.output.append(opmap["UNPACK_SEQUENCE"])
+        self.position += 1
+        self._write_value(count)
 
 # Utility classes and functions.
 
@@ -1254,7 +1281,8 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: signature-based polymorphism.
         # NOTE: Java rules not specifically obeyed.
         index = (arguments[0] << 8) + arguments[1]
-        count = arguments[2]
+        # NOTE: "count" == nargs + 1, apparently.
+        count = arguments[2] - 1
         target_name = self.class_file.constants[index - 1].get_python_name()
         # Stack: objectref, arg1, arg2, ...
         program.build_tuple(count)          # Stack: objectref, tuple
@@ -1684,7 +1712,7 @@ class ClassTranslator:
         translator.process(method, writer)
         return translator, writer
 
-    def make_method(self, method_name, methods, namespace):
+    def make_method(self, method_name, methods, global_names, namespace):
         if method_name == "<init>":
             method_name = "__init__"
         # Where only one method exists, just make an alias.
@@ -1692,17 +1720,118 @@ class ClassTranslator:
             method, fn = methods[0]
             namespace[method_name] = fn
             return
-        return # for now
         # Find the maximum number of parameters involved.
         #maximum = max([len(method.get_descriptor()[0]) for method in methods])
-        #program = BytecodeWriter()
+        program = BytecodeWriter()
         # NOTE: The code below should use dictionary-based dispatch for better performance.
-        #for method in methods:
-        #    program.load_fast(1)    # Stack: arguments
-        #    program.get_iter()      # Stack: arguments, iter
-        #    program.for_iter()      # Stack: arguments, iter, argument
-        #    program.dup_top()       # Stack: arguments, iter, argument, argument
-        #    for parameter in method.get_descriptor()[0]:
+        program.load_fast(1)                        # Stack: arguments
+        for method, fn in methods:
+            program.dup_top()                       # Stack: arguments, arguments
+            program.load_const(1)
+            program.store_fast(2)                   # found = 1
+            program.setup_loop()
+            # Emit a list of parameter types.
+            descriptor_types = method.get_descriptor()[0]
+            for descriptor_type in descriptor_types:
+                base_type, object_type, array_type = descriptor_type
+                python_type = classfile.descriptor_base_type_mapping[base_type]
+                if python_type == "instance":
+                    # NOTE: This will need extending.
+                    python_type = object_type
+                program.load_global(python_type)    # Stack: arguments, type, ...
+            program.build_list(len(descriptor_types))
+                                                    # Stack: arguments, types
+            # Make a map of arguments and types.
+            program.load_const(None)                # Stack: arguments, types, None
+            program.rot_three()                     # Stack: None, arguments, types
+            program.build_tuple(3)                  # Stack: tuple
+            program.load_global("map")              # Stack: tuple, map
+            program.rot_two()                       # Stack: map, tuple
+            program.load_global("apply")            # Stack: map, tuple, apply
+            program.rot_three()                     # Stack: apply, map, tuple
+            program.call_function(2)                # Stack: tuple (mapping arguments to types)
+            # Loop over each pair.
+            program.get_iter()                      # Stack: iter
+            program.for_iter()                      # Stack: iter, (argument, type)
+            program.unpack_sequence(2)              # Stack: iter, type, argument
+            program.dup_top()                       # Stack: iter, type, argument, argument
+            program.load_const(None)                # Stack: iter, type, argument, argument, None
+            program.compare_op("is")                # Stack: iter, type, argument, result
+            # Missing argument?
+            program.jump_to_label(0, "present")
+            program.pop_top()                       # Stack: iter, type, argument
+            program.pop_top()                       # Stack: iter, type
+            program.pop_top()                       # Stack: iter
+            program.load_const(0)
+            program.store_fast(2)                   # found = 0
+            program.break_loop()
+            # Argument was present.
+            program.start_label("present")
+            program.pop_top()                       # Stack: iter, type, argument
+            program.rot_two()                       # Stack: iter, argument, type
+            program.dup_top()                       # Stack: iter, argument, type, type
+            program.load_const(None)                # Stack: iter, argument, type, type, None
+            program.compare_op("is")                # Stack: iter, argument, type, result
+            # Missing parameter type?
+            program.jump_to_label(0, "present")
+            program.pop_top()                       # Stack: iter, argument, type
+            program.pop_top()                       # Stack: iter, argument
+            program.pop_top()                       # Stack: iter
+            program.load_const(0)
+            program.store_fast(2)                   # found = 0
+            program.break_loop()
+            # Parameter was present.
+            program.start_label("present")
+            program.pop_top()                       # Stack: iter, argument, type
+            program.build_tuple(2)                  # Stack: iter, (argument, type)
+            program.load_global("isinstance")       # Stack: iter, (argument, type), isinstance
+            program.rot_two()                       # Stack: iter, isinstance, (argument, type)
+            program.load_global("apply")            # Stack: iter, isinstance, (argument, type), apply
+            program.rot_three()                     # Stack: iter, apply, isinstance, (argument, type)
+            program.call_function(2)                # Stack: iter, result
+            program.jump_to_label(1, "match")
+            program.pop_top()                       # Stack: iter
+            program.load_const(0)
+            program.store_fast(2)                   # found = 0
+            program.break_loop()
+            # Argument type and parameter type matched.
+            program.start_label("match")
+            program.pop_top()                       # Stack: iter
+            program.end_loop()                      # Stack: iter
+            # If all the parameters matched, call the method.
+            program.load_fast(2)                    # Stack: iter, match
+            program.jump_to_label(0, "failed")
+            # All the parameters matched.
+            program.pop_top()                       # Stack: iter
+            program.load_fast(1)                    # Stack: arguments
+            program.load_fast(0)                    # Stack: arguments, self
+            program.load_attr(str(method.get_python_name()))
+                                                    # Stack: arguments, method
+            program.rot_two()                       # Stack: method, arguments
+            program.load_global("apply")            # Stack: method, arguments, apply
+            program.rot_three()                     # Stack: apply, method, arguments
+            program.call_function(2)                # Stack: result
+            program.return_value()
+            # Try the next method if arguments or parameters were missing or incorrect.
+            program.start_label("failed")
+            program.pop_top()                       # Stack: iter
+            program.pop_top()                       # Stack:
+        # Raise an exception if nothing matched.
+        # NOTE: Improve this.
+        program.load_const("No matching method")
+        program.raise_varargs(1)
+        program.load_const(None)
+        program.return_value()
+
+        # Add the code as a method in the namespace.
+        # NOTE: One actual parameter, flags as 71 apparently means that a list
+        # NOTE: parameter is used in a method.
+        nlocals = program.max_locals + 1
+        code = new.code(1, nlocals, program.max_stack_depth, 71, program.get_output(),
+            tuple(program.get_constants()), tuple(program.get_names()), tuple(self.make_varnames(nlocals)),
+            self.filename, method_name, 0, "")
+        fn = new.function(code, global_names)
+        namespace[method_name] = fn
 
     def process(self, global_names):
         namespace = {}
@@ -1714,7 +1843,7 @@ class ClassTranslator:
             method_name = str(method.get_python_name())
             # NOTE: Add line number table later.
             code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
-                tuple(make_varnames(nlocals)), self.filename, method_name, 0, "")
+                tuple(self.make_varnames(nlocals)), self.filename, method_name, 0, "")
             # NOTE: May need more globals.
             fn = new.function(code, global_names)
             namespace[method_name] = fn
@@ -1729,26 +1858,35 @@ class ClassTranslator:
             bases = ()
         # Define method dispatchers.
         for real_method_name, methods in real_methods.items():
-            self.make_method(real_method_name, methods, namespace)
+            self.make_method(real_method_name, methods, global_names, namespace)
         cls = new.classobj(str(self.class_file.this_class.get_python_name()), bases, namespace)
         global_names[cls.__name__] = cls
         return cls
 
-def make_varnames(nlocals):
-    l = ["self"]
-    for i in range(1, nlocals):
-        l.append("_l%s" % i)
-    return l[:nlocals]
+    def make_varnames(self, nlocals):
+        l = ["self"]
+        for i in range(1, nlocals):
+            l.append("_l%s" % i)
+        return l[:nlocals]
+
+def _map(*args):
+    print args
+    return apply(__builtins__.map, args)
+
+def _isinstance(*args):
+    print args
+    return apply(__builtins__.isinstance, args)
 
 if __name__ == "__main__":
     import sys
-    from classfile import ClassFile
     import dis
     global_names = {}
     global_names.update(__builtins__.__dict__)
+    #global_names["isinstance"] = _isinstance
+    #global_names["map"] = _map
     for filename in sys.argv[1:]:
         f = open(filename, "rb")
-        c = ClassFile(f.read())
+        c = classfile.ClassFile(f.read())
         translator = ClassTranslator(c)
         cls = translator.process(global_names)
 
