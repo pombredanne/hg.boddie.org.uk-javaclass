@@ -613,7 +613,12 @@ class ClassFile:
         index = u2(s[0:2])
         return self.constants[index - 1], s[2:]
 
-    _get_super_class = _get_this_class
+    def _get_super_class(self, s):
+        index = u2(s[0:2])
+        if index != 0:
+            return self.constants[index - 1], s[2:]
+        else:
+            return None, s[2:]
 
     def _get_interfaces(self, s):
         interfaces = []
