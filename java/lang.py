@@ -3,104 +3,182 @@
 class Character(object):
     def __init__(self, value):
         raise NotImplementedError, "__init__"
+
     def charValue(self):
         raise NotImplementedError, "charValue"
+    charValue___ = charValue
+
     def hashCode(self):
         raise NotImplementedError, "hashCode"
+    hashCode___ = hashCode
+
     def equals(self, anObject):
         raise NotImplementedError, "equals"
+    equals___java__lang__Object = equals
+
     def toString(self):
         raise NotImplementedError, "toString"
+    toString___ = toString
+
     def isLowerCase(self, ch):
         raise NotImplementedError, "isLowerCase"
-    isLowerCase = staticmethod(isLowerCase)
+    isLowerCase____C_ = staticmethod(isLowerCase)
+
     def isUpperCase(self, ch):
         raise NotImplementedError, "isUpperCase"
-    isUpperCase = staticmethod(isUpperCase)
+    isUpperCase____C_ = staticmethod(isUpperCase)
+
     def isTitleCase(self, ch):
         raise NotImplementedError, "isTitleCase"
-    isTitleCase = staticmethod(isTitleCase)
+    isTitleCase____C_ = staticmethod(isTitleCase)
+
     def isDigit(self, ch):
         raise NotImplementedError, "isDigit"
-    isDigit = staticmethod(isDigit)
+    isDigit____C_ = staticmethod(isDigit)
+
     def isDefined(self, ch):
         raise NotImplementedError, "isDefined"
-    isDefined = staticmethod(isDefined)
+    isDefined____C_ = staticmethod(isDefined)
+
     def isLetter(self, ch):
         raise NotImplementedError, "isLetter"
-    isLetter = staticmethod(isLetter)
+    isLetter____C_ = staticmethod(isLetter)
+
     def isLetterOrDigit(self, ch):
         raise NotImplementedError, "isLetterOrDigit"
-    isLetterOrDigit = staticmethod(isLetterOrDigit)
+    isLetterOrDigit____C_ = staticmethod(isLetterOrDigit)
+
     def isJavaLetter(self, ch):
         raise NotImplementedError, "isJavaLetter"
-    isJavaLetter = staticmethod(isJavaLetter)
+    isJavaLetter____C_ = staticmethod(isJavaLetter)
+
     def isJavaLetterOrDigit(self, ch):
         raise NotImplementedError, "isJavaLetterOrDigit"
-    isJavaLetterOrDigit = staticmethod(isJavaLetterOrDigit)
+    isJavaLetterOrDigit____C_ = staticmethod(isJavaLetterOrDigit)
+
     def isJavaIdentifierStart(self, ch):
         raise NotImplementedError, "isJavaIdentifierStart"
-    isJavaIdentifierStart = staticmethod(isJavaIdentifierStart)
+    isJavaIdentifierStart____C_ = staticmethod(isJavaIdentifierStart)
+
     def isJavaIdentifierPart(self, ch):
         raise NotImplementedError, "isJavaIdentifierPart"
-    isJavaIdentifierPart = staticmethod(isJavaIdentifierPart)
+    isJavaIdentifierPart____C_ = staticmethod(isJavaIdentifierPart)
+
     def isUnicodeIdentifierStart(self, ch):
         raise NotImplementedError, "isUnicodeIdentifierStart"
-    isUnicodeIdentifierStart = staticmethod(isUnicodeIdentifierStart)
+    isUnicodeIdentifierStart____C_ = staticmethod(isUnicodeIdentifierStart)
+
     def isUnicodeIdentifierPart(self, ch):
         raise NotImplementedError, "isUnicodeIdentifierPart"
-    isUnicodeIdentifierPart = staticmethod(isUnicodeIdentifierPart)
+    isUnicodeIdentifierPart____C_ = staticmethod(isUnicodeIdentifierPart)
+
     def isIdentifierIgnorable(self, ch):
         raise NotImplementedError, "isIdentifierIgnorable"
-    isIdentifierIgnorable = staticmethod(isIdentifierIgnorable)
+    isIdentifierIgnorable____C_ = staticmethod(isIdentifierIgnorable)
+
     def toLowerCase(self, ch):
         raise NotImplementedError, "toLowerCase"
-    toLowerCase = staticmethod(toLowerCase)
+    toLowerCase____C_ = staticmethod(toLowerCase)
+
     def toUpperCase(self, ch):
         raise NotImplementedError, "toUpperCase"
-    toUpperCase = staticmethod(toUpperCase)
+    toUpperCase____C_ = staticmethod(toUpperCase)
+
     def toTitleCase(self, ch):
         raise NotImplementedError, "toTitleCase"
-    toTitleCase = staticmethod(toTitleCase)
+    toTitleCase____C_ = staticmethod(toTitleCase)
+
     def digit(self, ch, radix):
         raise NotImplementedError, "digit"
-    digit = staticmethod(digit)
+    digit____C_____I_ = staticmethod(digit)
+
     def getNumericValue(self, ch):
         raise NotImplementedError, "getNumericValue"
-    getNumericValue = staticmethod(getNumericValue)
+    getNumericValue____C_ = staticmethod(getNumericValue)
+
     def isSpace(self, ch):
         raise NotImplementedError, "isSpace"
-    isSpace = staticmethod(isSpace)
+    isSpace____C_ = staticmethod(isSpace)
+
     def isSpaceChar(self, ch):
         raise NotImplementedError, "isSpaceChar"
-    isSpaceChar = staticmethod(isSpaceChar)
+    isSpaceChar____C_ = staticmethod(isSpaceChar)
+
     def isWhitespace(self, ch):
         raise NotImplementedError, "isWhitespace"
-    isWhitespace = staticmethod(isWhitespace)
+    isWhitespace____C_ = staticmethod(isWhitespace)
+
     def isISOControl(self, ch):
         raise NotImplementedError, "isISOControl"
-    isISOControl = staticmethod(isISOControl)
+    isISOControl____C_ = staticmethod(isISOControl)
+
     def getType(self, ch):
         raise NotImplementedError, "getType"
-    getType = staticmethod(getType)
+    getType____C_ = staticmethod(getType)
+
     def forDigit(self, ch, radix):
         raise NotImplementedError, "forDigit"
-    forDigit = staticmethod(forDigit)
+    forDigit____C_____I_ = staticmethod(forDigit)
+
     def compareTo(self, *args):
         # compareTo(self, anotherCharacter)
         # compareTo(self, o)
         raise NotImplementedError, "compareTo"
+    compareTo____C_ = compareTo
+    compareTo___java__lang__Object = compareTo
+
+setattr(Character, "__init____C_", Character.__init__)
+
+class Class(object):
+    def forName(className):
+        parts = unicode(className).split(".")
+        obj = __import__(className, globals(), {}, [])
+        for part in parts[1:]:
+            obj = obj[part]
+        return obj
+
+    forName___java__lang__String = staticmethod(forName)
+    # NOTE: To be enhanced.
+    forName___java__lang__String____Z____java__lang__ClassLoader = staticmethod(forName)
 
 # NOTE: Establish a better exception hierarchy.
 
-class IllegalArgumentException(object):
+class Error(object):
+    def __init__(self, *args):
+        self.args = args
+
+setattr(Error, "__init_____", Error.__init__)
+setattr(Error, "__init_____java__lang__String", Error.__init__)
+
+class Exception(object):
+    def __init__(self, *args):
+        self.args = args
+
+setattr(Exception, "__init_____", Exception.__init__)
+setattr(Exception, "__init_____java__lang__String", Exception.__init__)
+
+class IllegalArgumentException(Exception):
     def __init__(self, *args):
         self.args = args
 
 setattr(IllegalArgumentException, "__init_____", IllegalArgumentException.__init__)
 setattr(IllegalArgumentException, "__init_____java__lang__String", IllegalArgumentException.__init__)
 
+class SecurityException(Exception):
+    def __init__(self, *args):
+        self.args = args
+
+setattr(SecurityException, "__init_____", SecurityException.__init__)
+setattr(SecurityException, "__init_____java__lang__String", SecurityException.__init__)
+
 class String(object):
+
+    # NOTE: This method should not be needed, really.
+    def __str__(self):
+        return self.value.encode("utf-8")
+
+    def __unicode__(self):
+        return self.value
 
     def init__empty(self):
         self.value = u""
@@ -109,7 +187,9 @@ class String(object):
         self.value = obj.value
 
     def __init__(self, *args):
-        # Python string initialisation:
+
+        "Python string initialisation only."
+
         if len(args) == 1 and isinstance(args[0], str):
             self.value = unicode(args[0])
             return
@@ -122,7 +202,7 @@ class String(object):
             return
         # __init__(self, original)
         elif len(args) == 1 and isinstance(args[0], String):
-            self.__init__String(args[0])
+            self.init__String(args[0])
             return
         # __init__(self, value)
         # __init__(self, value, offset, count)
