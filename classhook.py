@@ -29,7 +29,7 @@ class ClassLoader(ihooks.ModuleLoader):
         from 'dir' and 'name' refers to a directory containing class files.
         """
 
-        dir = dir or ""
+        dir = dir or "."
 
         # Provide a special name for the current directory.
 
@@ -38,7 +38,7 @@ class ClassLoader(ihooks.ModuleLoader):
         else:
             path = os.path.join(dir, name)
 
-        print "*", name, dir, path
+        print "Processing name", name, "in", dir, "producing", path
         if os.path.isdir(path):
             if len(glob.glob(os.path.join(path, "*" + os.extsep + "class"))) != 0:
                 return (None, path, ("", "", PKG_DIRECTORY))
@@ -61,13 +61,13 @@ class ClassLoader(ihooks.ModuleLoader):
 
         global_names = {}
         global_names.update(__builtins__.__dict__)
-        module = new.module(name)
+        module = self.hooks.add_module(name)
 
         # Process each class file, producing a genuine Python class.
 
         class_files = []
         for class_filename in glob.glob(os.path.join(filename, "*" + os.extsep + "class")):
-            print "*", class_filename
+            print "Importing class", class_filename
             f = open(class_filename, "rb")
             s = f.read()
             f.close()
