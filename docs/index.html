@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>ClassFile</title>
+  <meta name="generator" content="amaya 8.1a, see http://www.w3.org/Amaya/" />
+  <link xmlns:xlink="http://www.w3.org/1999/xlink" href="styles.css"
+  rel="stylesheet" type="text/css" />
+</head>
+
+<body>
+<h1>ClassFile</h1>
+
+<p>The ClassFile collection of packages and utilities provides a means of
+importing Java classes and packages directly into Python, without the need
+for a Java virtual machine, so that the classes may be instantiated,
+accessed, run and manipulated just like Python classes, and that the
+resulting objects and methods can be accessed and manipulated just like
+Python objects and methods.</p>
+
+<h2>Quick Example</h2>
+
+<p class="prompt">cd tests/</p>
+
+<p class="prompt">javac Value.java</p>
+
+<p class="prompt">../runclass.py Value</p>
+
+<p class="result">v.getValue() correct: 123<br />
+v.getValue() correct: 456<br />
+v.isPositive() correct: 1<br />
+v.isPositive() correct: 0<br />
+v.compare(-790) correct: -1<br />
+v.compare(-788) correct: 1<br />
+v.compare(-789) correct: 0<br />
+v.getValue() == v2.getValue() correct: 0<br />
+v2.add(-123) correct: 0<br />
+v2.getValue() correct: 255</p>
+
+<p class="prompt">java Value</p>
+
+<p class="result">v.getValue() correct: 123<br />
+v.getValue() correct: 456<br />
+v.isPositive() correct: true<br />
+v.isPositive() correct: false<br />
+v.compare(-790) correct: -1<br />
+v.compare(-788) correct: 1<br />
+v.compare(-789) correct: 0<br />
+v.getValue() == v2.getValue() correct: false<br />
+v2.add(-123) correct: 0<br />
+v2.getValue() correct: 255</p>
+
+<h2>Motivation</h2>
+
+<p>Pick one of the following:</p>
+<ul>
+  <li>The need/desire to access Java libraries from Python without firing up
+    Java virtual machines or switching to Jython (and thereby losing access
+    to various CPython libraries).</li>
+  <li>Static typing for the Python environment, albeit achieved by writing
+    Java or other appropriate languages.</li>
+  <li>Having an open source environment from top to bottom to run Java
+    bytecode on.</li>
+  <li>Experimentation around import hooks, bytecode generation; observation
+    of different runtime and type systems interacting.</li>
+</ul>
+</body>
+</html>

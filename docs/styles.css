@@ -1,0 +1,60 @@
+body {
+background-color: white;
+font-size: 12pt;
+}
+
+h1 {
+color: navy;
+font-family: sans-serif;
+font-size: 20pt;
+}
+
+h2 {
+color: navy;
+font-family: sans-serif;
+font-size: 18pt;
+}
+
+h3 {
+color: navy;
+font-family: sans-serif;
+font-size: 16pt;
+}
+
+h4 {
+color: navy;
+font-family: sans-serif;
+font-size: 15pt;
+}
+
+h5 {
+color: navy;
+font-family: sans-serif;
+font-size: 14pt;
+}
+
+ul {
+list-style-type: disc;
+}
+
+pre {
+background-color: silver;
+color: black;
+}
+
+p.prompt {
+font-family: fixed;
+background-color: silver;
+color: black;
+}
+
+p.prompt:before {
+content: "$ ";
+}
+
+p.result {
+font-family: fixed;
+background-color: white;
+color: black;
+margin-left: 1em;
+}
