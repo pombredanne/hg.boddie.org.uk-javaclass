@@ -32,15 +32,35 @@ def f8(data):
 
 # Useful mix-ins.
 
-class PythonNameUtils:
+class PythonMethodUtils:
     def get_python_name(self):
         name = self.get_name()
         if str(name) == "<init>":
-            return "__init__"
+            name = "__init__"
         else:
-            return name
+            name = str(name)
+        return name + "$" + self._get_descriptor_as_name()
 
-class NameUtils(PythonNameUtils):
+    def _get_descriptor_as_name(self):
+        l = []
+        for descriptor_type in self.get_descriptor()[0]:
+            l.append(self._get_type_as_name(descriptor_type))
+        return "$".join(l)
+
+    def _get_type_as_name(self, descriptor_type, s=""):
+        base_type, object_type, array_type = descriptor_type
+        if base_type == "L":
+            return object_type + s
+        elif base_type == "[":
+            return self._get_type_as_name(array_type, s + "[]")
+        else:
+            return "<" + base_type + ">" + s
+
+class PythonNameUtils:
+    def get_python_name(self):
+        return self.get_name()
+
+class NameUtils:
     def get_name(self):
         if self.name_index != 0:
             return self.class_file.constants[self.name_index - 1]
@@ -48,7 +68,7 @@ class NameUtils(PythonNameUtils):
             # Some name indexes are zero to indicate special conditions.
             return None
 
-class NameAndTypeUtils(PythonNameUtils):
+class NameAndTypeUtils:
     def get_name(self):
         if self.name_and_type_index != 0:
             return self.class_file.constants[self.name_and_type_index - 1].get_name()
@@ -129,7 +149,7 @@ class DescriptorUtils:
 # Constant information.
 # Objects of these classes are not directly aware of the class they reside in.
 
-class ClassInfo(NameUtils):
+class ClassInfo(NameUtils, PythonNameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.name_index = u2(data[0:2])
@@ -142,19 +162,18 @@ class RefInfo(NameAndTypeUtils):
         self.name_and_type_index = u2(data[2:4])
         return data[4:]
 
-class FieldRefInfo(RefInfo):
+class FieldRefInfo(RefInfo, PythonNameUtils):
     def get_descriptor(self):
         return RefInfo.get_field_descriptor(self)
 
-class MethodRefInfo(RefInfo):
+class MethodRefInfo(RefInfo, PythonMethodUtils):
     def get_descriptor(self):
         return RefInfo.get_method_descriptor(self)
 
-class InterfaceMethodRefInfo(RefInfo):
-    def get_descriptor(self):
-        return RefInfo.get_method_descriptor(self)
+class InterfaceMethodRefInfo(MethodRefInfo):
+    pass
 
-class NameAndTypeInfo(NameUtils, DescriptorUtils):
+class NameAndTypeInfo(NameUtils, DescriptorUtils, PythonMethodUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.name_index = u2(data[0:2])
@@ -218,7 +237,7 @@ class DoubleInfo(LargeNumInfo):
 # Other information.
 # Objects of these classes are generally aware of the class they reside in.
 
-class ItemInfo(NameUtils, DescriptorUtils):
+class ItemInfo(NameUtils, DescriptorUtils, PythonMethodUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.access_flags = u2(data[0:2])
@@ -243,7 +262,7 @@ class AttributeInfo:
 
 # NOTE: Decode the different attribute formats.
 
-class SourceFileAttributeInfo(AttributeInfo, NameUtils):
+class SourceFileAttributeInfo(AttributeInfo, NameUtils, PythonNameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.attribute_length = u4(data[0:4])
@@ -367,7 +386,7 @@ class LineNumberInfo:
         self.line_number = u2(data[2:4])
         return data[4:]
 
-class LocalVariableInfo(NameUtils):
+class LocalVariableInfo(NameUtils, PythonNameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.start_pc = u2(data[0:2])
