@@ -146,6 +146,9 @@ class Class(Object):
     # NOTE: To be enhanced.
     forName___java__lang__String____Z____java__lang__ClassLoader = staticmethod(forName)
 
+class ClassLoader(Object):
+    pass
+
 class Integer(Object):
     def init_int(self, i):
         self.i = i
