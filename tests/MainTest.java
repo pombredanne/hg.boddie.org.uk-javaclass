@@ -5,3 +5,5 @@ public class MainTest {
         }
     }
 }
+
+// vim: tabstop=4 expandtab shiftwidth=4
