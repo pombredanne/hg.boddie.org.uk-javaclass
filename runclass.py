@@ -13,7 +13,8 @@ def load_class(class_name):
         module = __import__("__this__", globals(), locals(), [class_name])
         obj = getattr(module, class_name)
     else:
-        obj = __import__(class_name, globals(), locals())
+        class_module = ".".join(class_name_parts[:-1])
+        obj = __import__(class_module, globals(), locals())
         for part in class_name_parts[1:]:
             obj = getattr(obj, part)
 
