@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 
+# Interfaces.
+
+class Collection(object):
+    pass
+
+class List(object):
+    pass
+
+# Classes.
+
 class EventObject(object):
     def __init__(self, source):
         self.source = source
@@ -51,5 +61,14 @@ class ResourceBundle(object):
         # NOTE: To be implemented.
         return None
     getLocale___ = getLocale
+
+class AbstractCollection(Collection):
+    pass
+
+class AbstractList(AbstractCollection, List):
+    pass
+
+class Vector(AbstractList):
+    pass
 
 # vim: tabstop=4 expandtab shiftwidth=4
