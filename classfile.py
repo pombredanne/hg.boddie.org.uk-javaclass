@@ -35,7 +35,7 @@ def f8(data):
 class NameUtils:
     def get_name(self):
         if self.name_index != 0:
-            return unicode(self.class_file.constants[self.name_index - 1])
+            return self.class_file.constants[self.name_index - 1]
         else:
             # Some name indexes are zero to indicate special conditions.
             return None
