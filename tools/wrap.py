@@ -23,6 +23,7 @@ if __name__ == "__main__":
     directory, package = sys.argv[1:3]
     f = open(os.path.join(directory, "__init__.py"), "w")
     f.write("import %s\n" % package)
+    f.write("import java.lang\n")
 
     # Process each class file.
 
@@ -36,15 +37,45 @@ if __name__ == "__main__":
 
         full_name = c.this_class.get_python_name()
         class_name = full_name.split(".")[-1]
-        f.write("class %s(%s.%s, object):\n" % (class_name, package, class_name))
+        f.write("class %s(%s.%s, java.lang.Object):\n" % (class_name, package, class_name))
 
         # Process methods in the class, writing wrapper code.
 
         method_names = []
         for method in c.methods:
             wrapped_method_name = method.get_unqualified_python_name()
-            f.write("    def %s(*args):\n" % wrapped_method_name)
-            f.write("        return %s.%s.%s(*args)\n" % (package, class_name, wrapped_method_name))
+
+            # Find out more about the parameters, introducing special
+            # conversions where appropriate.
+
+            parameters = [("self", None)]
+            parameter_index = 1
+            for parameter in method.get_descriptor()[0]:
+                base_type, object_type, array_type = parameter
+                if object_type == "java/lang/String":
+                    parameters.append(("p" + str(parameter_index), "unicode"))
+                else:
+                    parameters.append(("p" + str(parameter_index), None))
+                parameter_index += 1
+
+            # Write the signature.
+
+            parameter_names = ", ".join([t[0] for t in parameters])
+            f.write("    def %s(%s):\n" % (wrapped_method_name, parameter_names))
+
+            # Write any conversions.
+
+            for parameter_name, conversion in parameters:
+                if conversion:
+                    f.write("        %s = %s(%s)\n" % (parameter_name, conversion, parameter_name))
+
+            # Write the call to the wrapped method.
+
+            f.write("        return %s.%s.%s(%s)\n" % (package, class_name, wrapped_method_name, parameter_names))
+
+            # Record the correspondence between the Java-accessible and wrapped
+            # method names.
+
             method_name = method.get_python_name()
             method_names.append((method_name, wrapped_method_name))
 
