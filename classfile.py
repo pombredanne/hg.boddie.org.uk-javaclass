@@ -71,7 +71,7 @@ class PythonMethodUtils:
 
 class PythonNameUtils:
     def get_python_name(self):
-        return self.get_name()
+        return str(self.get_name()).replace("/", ".")
 
 class NameUtils:
     def get_name(self):
