@@ -7,7 +7,7 @@ http://java.sun.com/docs/books/vmspec/2nd-edition/html/Instructions2.doc.html
 NOTE: Synchronized constructs are not actually supported.
 """
 
-from dis import opmap # for access to Python bytecode values
+from dis import opmap, cmp_op # for access to Python bytecode values and operators
 from UserDict import UserDict
 
 # Bytecode production classes.
@@ -22,26 +22,82 @@ class BytecodeWriter:
         self.output = []
         self.position = 0
 
+        # Stack depth estimation.
+        self.stack_depth = 0
+        self.max_stack_depth = 0
+
         # Mapping from values to indexes.
         self.constants = {}
 
         # Mapping from names to indexes.
         # NOTE: This may be acquired from elsewhere.
-        self.globals = {}
+        #self.globals = {}
 
         # Mapping from names to indexes.
         self.names = {}
 
+        # A list of constants used as exception handler return addresses.
+        self.constants_for_exceptions = []
+
     def get_output(self):
         output = []
         for element in self.output:
-            if isinstance(element, LazyValue):
-                output.append(chr(element.value))
+            if isinstance(element, LazySubValue):
+                value = element.value
             else:
-                output.append(chr(element))
+                value = element
+            output.append(chr(value))
         return "".join(output)
 
+    def get_constants(self):
+        l = self._get_list(self._invert(self.constants))
+        result = []
+        for i in l:
+            if isinstance(i, LazyValue):
+                result.append(i.get_value())
+            else:
+                result.append(i)
+        return result
+
+    #def get_globals(self):
+    #    return self._get_list(self._invert(self.globals))
+
+    def get_names(self):
+        return self._get_list(self._invert(self.names))
+
+    def _invert(self, d):
+        inverted = {}
+        for k, v in d.items():
+            inverted[v] = k
+        return inverted
+
+    def _get_list(self, d):
+        l = []
+        for i in range(0, len(d.keys())):
+            l.append(d[i])
+        return l
+
+    # Administrative methods.
+
+    def update_stack_depth(self, change):
+        self.stack_depth += change
+        if self.stack_depth > self.max_stack_depth:
+            self.max_stack_depth = self.stack_depth
+
     # Special methods.
+
+    def _write_value(self, value):
+        if isinstance(value, LazyValue):
+            # NOTE: Assume a 16-bit value.
+            self.output.append(value.values[0])
+            self.output.append(value.values[1])
+        elif value <= 0xffff:
+            self.output.append(value & 0xff)
+            self.output.append((value & 0xff00) >> 8)
+            self.position += 2
+        else:
+            # NOTE: EXTENDED_ARG not yet supported.
+            raise ValueError, value
 
     def end_loop(self):
         current_loop_start = self.loops.pop()
@@ -51,20 +107,42 @@ class BytecodeWriter:
 
     def jump_to_label(self, status, name):
         # Record the instruction using the jump.
-        if not self.jumps.has_key(name):
-            self.jumps[name] = []
-        self.jumps[name].append(self.position)
+        jump_instruction = self.position
         if status is None:
             self.jump_forward()
         elif status:
             self.jump_if_true()
         else:
             self.jump_if_false()
+        # Record the following instruction, too.
+        if not self.jumps.has_key(name):
+            self.jumps[name] = []
+        self.jumps[name].append((jump_instruction, self.position))
 
     def start_label(self, name):
         # Fill in all jump instructions.
-        for jump_instruction in self.jumps[name]:
-            self.output[jump_instruction + 1] = self.position
+        for jump_instruction, following_instruction in self.jumps[name]:
+            self.output[jump_instruction + 1] = self.position - following_instruction
+        del self.jumps[name]
+
+    def load_const_ret(self, value):
+        self.constants_for_exceptions.append(value)
+        self.load_const(value)
+
+    def ret(self, index):
+        # Previously, the constant stored on the stack by jsr/jsr_w was stored
+        # in a local variable. In the JVM, extracting the value from the local
+        # variable and jumping can be done at runtime. In the Python VM, any
+        # jump target must be known in advance and written into the bytecode.
+        self.load_fast(index)
+        for constant in self.constants_for_exceptions:
+            self.dup_top()              # Stack: actual-address, actual-address
+            self.load_const(constant)   # Stack: actual-address, actual-address, suggested-address
+            self.compare_op("==")       # Stack: actual-address, result
+            self.jump_to_label(0, "const")
+            self.jump_absolute(constant)
+            self.start_label("const")
+            self.pop_top()              # Stack: actual-address
 
     # Complicated methods.
 
@@ -72,55 +150,103 @@ class BytecodeWriter:
         self.output.append(opmap["LOAD_CONST"])
         if not self.constants.has_key(value):
             self.constants[value] = len(self.constants.keys())
-        self.output.append(self.constants[value])
-        self.position += 2
+        self.position += 1
+        self._write_value(self.constants[value])
+        self.update_stack_depth(1)
 
     def load_global(self, name):
         self.output.append(opmap["LOAD_GLOBAL"])
-        if not self.globals.has_key(name):
-            self.globals[name] = len(self.globals.keys())
-        self.output.append(self.globals[name])
-        self.position += 2
+        if not self.names.has_key(name):
+            self.names[name] = len(self.names.keys())
+        self.position += 1
+        self._write_value(self.names[name])
+        self.update_stack_depth(1)
 
     def load_attr(self, name):
         self.output.append(opmap["LOAD_ATTR"])
         if not self.names.has_key(name):
             self.names[name] = len(self.names.keys())
-        self.output.append(self.names[name])
-        self.position += 2
+        self.position += 1
+        self._write_value(self.names[name])
+
+    def load_name(self, name):
+        self.output.append(opmap["LOAD_NAME"])
+        if not self.names.has_key(name):
+            self.names[name] = len(self.names.keys())
+        self.position += 1
+        self._write_value(self.names[name])
+        self.update_stack_depth(1)
 
     def load_fast(self, index):
         self.output.append(opmap["LOAD_FAST"])
-        self.output.append(index)
-        self.position += 2
+        self.position += 1
+        self._write_value(index)
+        self.update_stack_depth(1)
+
+    def store_attr(self, name):
+        self.output.append(opmap["STORE_ATTR"])
+        if not self.names.has_key(name):
+            self.names[name] = len(self.names.keys())
+        self.position += 1
+        self._write_value(self.names[name])
+        self.update_stack_depth(-1)
+
+    def store_fast(self, index):
+        self.output.append(opmap["STORE_FAST"])
+        self.position += 1
+        self._write_value(index)
+        self.update_stack_depth(-1)
 
     # Normal bytecode generators.
 
     def for_iter(self):
         self.loops.push(self.position)
         self.output.append(opmap["FOR_ITER"])
-        self.output.append(None) # To be filled in later
-        self.position += 2
+        self.position += 1
+        self._write_value(0) # To be filled in later
+        self.update_stack_depth(1)
 
-    def jump_if_false(self, offset=None):
+    def jump_if_false(self, offset=0):
         self.output.append(opmap["JUMP_IF_FALSE"])
-        self.output.append(offset) # May be filled in later
-        self.position += 2
+        self.position += 1
+        self._write_value(offset) # May be filled in later
 
-    def jump_if_true(self, offset=None):
+    def jump_if_true(self, offset=0):
         self.output.append(opmap["JUMP_IF_TRUE"])
-        self.output.append(offset) # May be filled in later
-        self.position += 2
+        self.position += 1
+        self._write_value(offset) # May be filled in later
 
-    def jump_forward(self, offset=None):
+    def jump_forward(self, offset=0):
         self.output.append(opmap["JUMP_FORWARD"])
-        self.output.append(offset) # May be filled in later
-        self.position += 2
+        self.position += 1
+        self._write_value(offset) # May be filled in later
+
+    def jump_absolute(self, address=0):
+        self.output.append(opmap["JUMP_ABSOLUTE"])
+        self.position += 1
+        self._write_value(address) # May be filled in later
 
     def build_tuple(self, count):
         self.output.append(opmap["BUILD_TUPLE"])
-        self.output.append(count)
-        self.position += 2
+        self.position += 1
+        self._write_value(count)
+        self.update_stack_depth(-(count - 1))
+
+    def build_list(self, count):
+        self.output.append(opmap["BUILD_LIST"])
+        self.position += 1
+        self._write_value(count)
+        self.update_stack_depth(-(count - 1))
+
+    def pop_top(self):
+        self.output.append(opmap["POP_TOP"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def dup_top(self):
+        self.output.append(opmap["DUP_TOP"])
+        self.position += 1
+        self.update_stack_depth(1)
 
     def rot_two(self):
         self.output.append(opmap["ROT_TWO"])
@@ -136,26 +262,120 @@ class BytecodeWriter:
 
     def call_function(self, count):
         self.output.append(opmap["CALL_FUNCTION"])
-        self.output.append(count)
-        self.position += 2
+        self.position += 1
+        self._write_value(count)
+        self.update_stack_depth(-count)
+
+    def binary_subscr(self):
+        self.output.append(opmap["BINARY_SUBSCR"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_add(self):
+        self.output.append(opmap["BINARY_ADD"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_divide(self):
+        self.output.append(opmap["BINARY_DIVIDE"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_multiply(self):
+        self.output.append(opmap["BINARY_MULTIPLY"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_modulo(self):
+        self.output.append(opmap["BINARY_MODULO"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_subtract(self):
+        self.output.append(opmap["BINARY_SUBTRACT"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_and(self):
+        self.output.append(opmap["BINARY_AND"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_or(self):
+        self.output.append(opmap["BINARY_XOR"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_lshift(self):
+        self.output.append(opmap["BINARY_LSHIFT"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_rshift(self):
+        self.output.append(opmap["BINARY_RSHIFT"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def binary_xor(self):
+        self.output.append(opmap["BINARY_XOR"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def compare_op(self, op):
+        self.output.append(opmap["COMPARE_OP"])
+        self.position += 1
+        self._write_value(list(cmp_op).index(op))
+        self.update_stack_depth(-1)
+
+    def return_value(self):
+        self.output.append(opmap["RETURN_VALUE"])
+        self.position += 1
+        self.update_stack_depth(-1)
+
+    def raise_varargs(self, count):
+        self.output.append(opmap["RAISE_VARARGS"])
+        self.position += 1
+        self._write_value(count)
 
 # Utility classes and functions.
 
 class LazyDict(UserDict):
     def __getitem__(self, key):
         if not self.data.has_key(key):
-            self.data[key] = LazyValue()
+            # NOTE: Assume 16-bit value.
+            self.data[key] = LazyValue(2)
         return self.data[key]
     def __setitem__(self, key, value):
         if self.data.has_key(key):
             existing_value = self.data[key]
             if isinstance(existing_value, LazyValue):
-                existing_value.value = value
+                existing_value.set_value(value)
                 return
         self.data[key] = value
 
 class LazyValue:
-    def __init__(self, value=None):
+    def __init__(self, nvalues):
+        self.values = []
+        for i in range(0, nvalues):
+            self.values.append(LazySubValue())
+    def set_value(self, value):
+        # NOTE: Assume at least 16-bit value. No "filling" performed.
+        if value <= 0xffff:
+            self.values[0].set_value(value & 0xff)
+            self.values[1].set_value((value & 0xff00) >> 8)
+        else:
+            # NOTE: EXTENDED_ARG not yet supported.
+            raise ValueError, value
+    def get_value(self):
+        value = 0
+        for i in range(0, len(self.values)):
+            value = (value << 8) + self.values.pop().value
+        return value
+
+class LazySubValue:
+    def __init__(self):
+        self.value = 0
+    def set_value(self, value):
         self.value = value
 
 def signed(value, limit):
@@ -390,7 +610,7 @@ class BytecodeReader:
         174 : ("freturn", 0),
         175 : ("dreturn", 0),
         176 : ("areturn", 0),
-        177 : ("return", 0),
+        177 : ("return_", 0),
         178 : ("getstatic", 2),
         179 : ("putstatic", 2),
         180 : ("getfield", 2),
@@ -439,9 +659,6 @@ class BytecodeTranslator(BytecodeReader):
 
     "A Java bytecode translator which uses a Python bytecode writer."
 
-    def nop(self, arguments, program):
-        pass
-
     def aaload(self, arguments, program):
         # NOTE: No type checking performed.
         program.binary_subscr()
@@ -474,7 +691,9 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Does not raise NegativeArraySizeException.
         # NOTE: Not using the index to type the list/array.
         index = (arguments[0] << 8) + arguments[1]
+        self._newarray(program)
 
+    def _newarray(self, program):
         program.build_list()        # Stack: count, list
         program.rot_two()           # Stack: list, count
         program.setup_loop()
@@ -668,7 +887,13 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name))
 
-    getstatic = getfield # Ignoring Java restrictions
+    def getstatic(self, arguments, program):
+        index = (arguments[0] << 8) + arguments[1]
+        target_name = self.class_file.constants[index - 1].get_name()
+        program.load_name("self")
+        program.load_attr("__class__")
+        # NOTE: Using the string version of the name which may contain incompatible characters.
+        program.load_attr(str(target_name))
 
     def goto(self, arguments, program):
         offset = signed2((arguments[0] << 8) + arguments[1])
@@ -840,7 +1065,6 @@ class BytecodeTranslator(BytecodeReader):
         program.call_function(2)            # Stack: result
 
     def _invoke(self, target_name, program):
-        program.rot_two()                   # Stack: tuple, objectref
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name)) # Stack: tuple, method
         program.rot_two()                   # Stack: method, tuple
@@ -857,6 +1081,7 @@ class BytecodeTranslator(BytecodeReader):
         target_name = self.class_file.constants[index - 1].get_name()
         # Stack: objectref, arg1, arg2, ...
         program.build_tuple(count)          # Stack: objectref, tuple
+        program.rot_two()                   # Stack: tuple, objectref
         self._invoke(target_name, program)
 
     def invokespecial(self, arguments, program):
@@ -869,8 +1094,28 @@ class BytecodeTranslator(BytecodeReader):
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
         # Stack: objectref, arg1, arg2, ...
-        program.build_tuple(count)          # Stack: objectref, tuple
+        program.build_tuple(count + 1)  # Stack: tuple
+        # Use the class to provide access to static methods.
+        program.load_name("self")       # Stack: tuple, self
+        program.load_attr("__class__")  # Stack: tuple, class
+        program.load_attr("__bases__")  # Stack: tuple, base-classes
+        program.dup_top()               # Stack: tuple, base-classes, base-classes
+        program.load_global("len")      # Stack: tuple, base-classes, base-classes, len
+        program.rot_two()               # Stack: tuple, base-classes, len, base-classes
+        program.call_function(1)        # Stack: tuple, base-classes, count
+        program.load_const(0)           # Stack: tuple, base-classes, count, 0
+        program.compare_op("==")        # Stack: tuple, base-classes, result
+        program.jump_to_label(1, "next")
+        program.pop_top()               # Stack: tuple, base-classes
+        program.load_const(0)           # Stack: tuple, base-classes, 0
+        program.binary_subscr()         # Stack: tuple, superclass
         self._invoke(target_name, program)
+        program.jump_to_label(None, "next2")
+        program.start_label("next")
+        program.pop_top()               # Stack: tuple, base-classes
+        program.pop_top()               # Stack: tuple
+        program.pop_top()               # Stack:
+        program.start_label("next2")
 
     def invokestatic(self, arguments, program):
         # NOTE: This implementation does not perform the necessary checks for
@@ -882,9 +1127,10 @@ class BytecodeTranslator(BytecodeReader):
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
         # Stack: arg1, arg2, ...
-        program.build_tuple(count)  # Stack: tuple
-        # NOTE: Should probably use Python static methods.
-        program.load_name("self")   # Stack: tuple, self
+        program.build_tuple(count)      # Stack: tuple
+        # Use the class to provide access to static methods.
+        program.load_name("self")       # Stack: tuple, self
+        program.load_attr("__class__")  # Stack: tuple, class
         self._invoke(target_name, program)
 
     invokevirtual = invokeinterface # Ignoring Java rules
@@ -922,14 +1168,14 @@ class BytecodeTranslator(BytecodeReader):
         offset = signed2((arguments[0] << 8) + arguments[1])
         java_absolute = self.java_position + offset
         # Store the address of the next instruction.
-        program.load_const(self.position_mapping[self.java_position + 3])
+        program.load_const_ret(self.position_mapping[self.java_position + 3])
         program.jump_absolute(self.position_mapping[java_absolute])
 
     def jsr_w(self, arguments, program):
         offset = signed4((arguments[0] << 24) + (arguments[1] << 16) + (arguments[2] << 8) + arguments[3])
         java_absolute = self.java_position + offset
         # Store the address of the next instruction.
-        program.load_const(self.position_mapping[self.java_position + 5])
+        program.load_const_ret(self.position_mapping[self.java_position + 5])
         program.jump_absolute(self.position_mapping[java_absolute])
 
     l2d = i2d
@@ -1015,12 +1261,12 @@ class BytecodeTranslator(BytecodeReader):
             program.dup_top()                                           # Stack: key, key
             program.load_const(match)                                   # Stack: key, key, match
             program.compare_op("==")                                    # Stack: key, result
-            program.jump_to_label(0, "end" + str(pair))
+            program.jump_to_label(0, "end")
             program.pop_top()                                           # Stack: key
             program.pop_top()                                           # Stack:
             program.jump_absolute(self.position_mapping[java_absolute])
             # Generate the label for the end of the branching code.
-            program.start_label("end" + str(pair))
+            program.start_label("end")
             program.pop_top()                                           # Stack: key
             # Update the index.
             pair_index += 8
@@ -1051,19 +1297,95 @@ class BytecodeTranslator(BytecodeReader):
         pass
 
     def multianewarray(self, arguments, program):
-        program.build_list()        # Stack: count1, count2, ..., countN, list
-        program.rot_two()           # Stack: count1, count2, ..., list, countN
-        program.setup_loop()
-        program.load_global("range")
-        program.load_const(0)       # Stack: list, count, range, 0
-        program.rot_three()         # Stack: list, 0, count, range
-        program.rot_three()         # Stack: list, range, 0, count
-        program.call_function(2)    # Stack: list, range_list
-        program.get_iter()          # Stack: list, iter
-        program.for_iter()          # Stack: list, iter, value
-        for i in range(0, arguments[2]):
-                                                # Stack: 
-            self.anewarray(arguments, program)  # Stack: list, iter
+        # NOTE: To be implemented.
+        pass
+
+    def new(self, arguments, program):
+        # This operation is considered to be the same as the calling of the
+        # initialisation method of the given class with no arguments.
+        index = (arguments[0] << 8) + arguments[1]
+        target_name = self.class_file.constants[index - 1].get_name()
+        # NOTE: Using the string version of the name which may contain incompatible characters.
+        program.load_global(str(target_name))
+        program.call_function(0)
+
+    def newarray(self, arguments, program):
+        # NOTE: Does not raise NegativeArraySizeException.
+        # NOTE: Not using the arguments to type the list/array.
+        self._newarray(program)
+
+    def nop(self, arguments, program):
+        pass
+
+    def pop(self, arguments, program):
+        program.pop_top()
+
+    pop2 = pop # ignoring Java stack value distinctions
+
+    def putfield(self, arguments, program):
+        index = (arguments[0] << 8) + arguments[1]
+        target_name = self.class_file.constants[index - 1].get_name()
+        program.rot_two()
+        # NOTE: Using the string version of the name which may contain incompatible characters.
+        program.store_attr(str(target_name))
+
+    def putstatic(self, arguments, program):
+        index = (arguments[0] << 8) + arguments[1]
+        target_name = self.class_file.constants[index - 1].get_name()
+        program.load_name("self")
+        program.load_attr("__class__")
+        # NOTE: Using the string version of the name which may contain incompatible characters.
+        program.store_attr(str(target_name))
+
+    def ret(self, arguments, program):
+        program.ret(arguments[0])
+
+    def return_(self, arguments, program):
+        program.load_const(None)
+        program.return_value()
+
+    saload = laload
+    sastore = lastore
+
+    def sipush(self, arguments, program):
+        program.load_const((arguments[0] << 8) + arguments[1])
+
+    def swap(self, arguments, program):
+        program.rot_two()
+
+    def tableswitch(self, arguments, program):
+        # Find the offset to the next 4 byte boundary in the code.
+        d, r = divmod(self.java_position, 4)
+        to_boundary = (4 - r) % 4
+        # Get the pertinent arguments.
+        arguments = arguments[to_boundary:]
+        default = (arguments[0] << 24) + (arguments[1] << 16) + (arguments[2] << 8) + arguments[3]
+        low = (arguments[4] << 24) + (arguments[5] << 16) + (arguments[6] << 8) + arguments[7]
+        high = (arguments[8] << 24) + (arguments[9] << 16) + (arguments[10] << 8) + arguments[11]
+        # Process the jump entries.
+        # NOTE: This is not the most optimal implementation.
+        jump_index = 8
+        for jump in range(low, high + 1):
+            offset = signed4((arguments[jump_index] << 24) + (arguments[jump_index + 1] << 16) +
+                (arguments[jump_index + 2] << 8) + arguments[jump_index + 3])
+            # Calculate the branch target.
+            java_absolute = self.java_position + offset
+            # Generate branching code.
+            program.dup_top()                                           # Stack: key, key
+            program.load_const(jump)                                    # Stack: key, key, jump
+            program.compare_op("==")                                    # Stack: key, result
+            program.jump_to_label(0, "end")
+            program.pop_top()                                           # Stack: key
+            program.pop_top()                                           # Stack:
+            program.jump_absolute(self.position_mapping[java_absolute])
+            # Generate the label for the end of the branching code.
+            program.start_label("end")
+            program.pop_top()                                           # Stack: key
+            # Update the index.
+            jump_index += 8
+        # Generate the default.
+        java_absolute = self.java_position + default
+        program.jump_absolute(self.position_mapping[java_absolute])
 
     def wide(self, code, program):
         # NOTE: To be implemented.
