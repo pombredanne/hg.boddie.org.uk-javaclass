@@ -158,9 +158,8 @@ class ClassLoader(ihooks.ModuleLoader):
         # Finally, call __clinit__ methods for all relevant classes.
 
         for cls, class_file in classes:
-            if not classfile.has_flags(class_file.access_flags, [classfile.ABSTRACT]):
-                if hasattr(cls, "__clinit__"):
-                    cls.__clinit__()
+            if hasattr(cls, "__clinit__"):
+                cls.__clinit__()
 
         return module
 
