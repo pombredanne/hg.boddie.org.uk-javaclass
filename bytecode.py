@@ -634,6 +634,9 @@ def signed(value, limit):
     else:
         return value
 
+def signed1(value):
+    return signed(value, 0x80)
+
 def signed2(value):
     return signed(value, 0x8000)
 
@@ -1161,7 +1164,7 @@ class BytecodeTranslator(BytecodeReader):
     bastore = aastore
 
     def bipush(self, arguments, program):
-        program.load_const(arguments[0])
+        program.load_const(signed1(arguments[0]))
 
     caload = aaload
     castore = aastore
@@ -1872,7 +1875,7 @@ class BytecodeTranslator(BytecodeReader):
     sastore = lastore
 
     def sipush(self, arguments, program):
-        program.load_const((arguments[0] << 8) + arguments[1])
+        program.load_const(signed2((arguments[0] << 8) + arguments[1]))
 
     def swap(self, arguments, program):
         program.rot_two()
