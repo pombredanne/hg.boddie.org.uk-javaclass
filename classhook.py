@@ -105,6 +105,31 @@ class ClassLoader(ihooks.ModuleLoader):
 
     "A class providing support for searching directories for supported files."
 
+    def find_module(self, name, path=None):
+
+        """
+        Find the module with the given 'name', using the given 'path' to locate
+        it. Note that ModuleLoader.find_module is almost sufficient, but does
+        not provide enough support for "package unions" where the root of a
+        package hierarchy may appear in several places.
+
+        Return a list of locations (each being the "stuff" data structure used
+        by load_module); this replaces the single "stuff" value or None returned
+        by ModuleLoader.find_module.
+        """
+
+        if path is None:
+            path = [None] + self.default_path()
+
+        found_locations = []
+
+        for dir in path:
+            stuff = self.find_module_in_dir(name, dir)
+            if stuff:
+                found_locations.append(stuff)
+
+        return found_locations
+
     def find_module_in_dir(self, name, dir, allow_packages=1):
 
         """
@@ -196,107 +221,121 @@ class ClassLoader(ihooks.ModuleLoader):
     def load_module(self, name, stuff):
 
         """
-        Load the module with the given 'name', whose 'stuff' which describes the
-        location of the module is a tuple of the form (file, filename, (suffix,
-        mode, data type)). Return a module object or raise an ImportError if a
-        problem occurred in the import operation.
+        Load the module with the given 'name', with a list of 'stuff' items,
+        each of which describes the location of the module and is a tuple of the
+        form (file, filename, (suffix, mode, data type)).
+
+        Return a module object or raise an ImportError if a problem occurred in
+        the import operation.
+
+        Note that the 'stuff' parameter is a list and not a single item as in
+        ModuleLoader.load_module. This should still work, however, since the
+        find_module method produces such a list.
         """
 
-        # Just go into the directory and find the class files.
-
-        archive, filename, info = stuff
-        suffix, mode, datatype = info
-        if datatype not in (JAVA_PACKAGE, JAVA_ARCHIVE):
-            return ihooks.ModuleLoader.load_module(self, name, stuff)
-
-        #print "Loading", archive, filename, info
-
         # Set up the module.
+        # A union of all locations is placed in the module's path.
 
         module = self.hooks.add_module(name)
-        module.__path__ = [filename]
+        module.__path__ = [item_filename for (item_archive, item_filename, item_info) in stuff]
 
-        # Prepare a dictionary of globals.
+        # Just go into each package and find the class files.
 
-        global_names = module.__dict__
-        global_names["__builtins__"] = __builtins__
+        for stuff_item in stuff:
 
-        # Process each class file, producing a genuine Python class.
+            # Extract the details, delegating loading responsibility to the
+            # default loader where appropriate.
+            # NOTE: Should we not be using some saved loader remembered upon
+            # NOTE: installation?
 
-        class_files = []
-        classes = []
+            archive, filename, info = stuff_item
+            suffix, mode, datatype = info
+            if datatype not in (JAVA_PACKAGE, JAVA_ARCHIVE):
+                return ihooks.ModuleLoader.load_module(self, name, stuff_item)
 
-        # Get the real filename.
+            #print "Loading", archive, filename, info
 
-        filename = self._get_path_in_archive(filename)
-        #print "Real filename", filename
+            # Prepare a dictionary of globals.
 
-        # Load the class files.
+            global_names = module.__dict__
+            global_names["__builtins__"] = __builtins__
 
-        class_files = {}
-        for class_filename in self.hooks.matching(filename, os.extsep + "class", archive):
-            #print "Loading class", class_filename
-            s = self.hooks.read(class_filename, archive)
-            class_file = classfile.ClassFile(s)
-            class_files[str(class_file.this_class.get_name())] = class_file
+            # Process each class file, producing a genuine Python class.
 
-        # Get an index of the class files.
+            class_files = []
+            classes = []
 
-        class_file_index = class_files.keys()
+            # Get the real filename.
 
-        # NOTE: Unnecessary sorting for test purposes.
+            filename = self._get_path_in_archive(filename)
+            #print "Real filename", filename
 
-        class_file_index.sort()
+            # Load the class files.
 
-        # Now go through the classes arranging them in a safe loading order.
+            class_files = {}
+            for class_filename in self.hooks.matching(filename, os.extsep + "class", archive):
+                #print "Loading class", class_filename
+                s = self.hooks.read(class_filename, archive)
+                class_file = classfile.ClassFile(s)
+                class_files[str(class_file.this_class.get_name())] = class_file
 
-        position = 0
-        while position < len(class_file_index):
-            class_name = class_file_index[position]
-            super_class_name = str(class_files[class_name].super_class.get_name())
+            # Get an index of the class files.
 
-            # Discover whether the superclass appears later.
+            class_file_index = class_files.keys()
 
-            try:
-                super_class_position = class_file_index.index(super_class_name)
-                if super_class_position > position:
+            # NOTE: Unnecessary sorting for test purposes.
 
-                    # If the superclass appears later, swap this class and the
-                    # superclass, then process the superclass.
+            class_file_index.sort()
 
-                    class_file_index[position] = super_class_name
-                    class_file_index[super_class_position] = class_name
-                    continue
+            # Now go through the classes arranging them in a safe loading order.
 
-            except ValueError:
-                pass
+            position = 0
+            while position < len(class_file_index):
+                class_name = class_file_index[position]
+                super_class_name = str(class_files[class_name].super_class.get_name())
 
-            position += 1
+                # Discover whether the superclass appears later.
 
-        class_files = [class_files[class_name] for class_name in class_file_index]
+                try:
+                    super_class_position = class_file_index.index(super_class_name)
+                    if super_class_position > position:
 
-        for class_file in class_files:
-            translator = bytecode.ClassTranslator(class_file)
-            cls, external_names = translator.process(global_names)
-            module.__dict__[cls.__name__] = cls
-            classes.append((cls, class_file))
+                        # If the superclass appears later, swap this class and the
+                        # superclass, then process the superclass.
 
-            # Import the local names.
+                        class_file_index[position] = super_class_name
+                        class_file_index[super_class_position] = class_name
+                        continue
 
-            for external_name in external_names:
-                external_name_parts = external_name.split(".")
-                if len(external_name_parts) > 1:
-                    external_module_name = ".".join(external_name_parts[:-1])
-                    print "* Importing", external_module_name
-                    obj = __import__(external_module_name, global_names, {}, [])
-                    global_names[external_name_parts[0]] = obj
+                except ValueError:
+                    pass
 
-        # Finally, call __clinit__ methods for all relevant classes.
+                position += 1
 
-        for cls, class_file in classes:
-            print "**", cls, class_file
-            if hasattr(cls, "__clinit__"):
-                eval(cls.__clinit__.func_code, global_names)
+            class_files = [class_files[class_name] for class_name in class_file_index]
+
+            for class_file in class_files:
+                translator = bytecode.ClassTranslator(class_file)
+                cls, external_names = translator.process(global_names)
+                module.__dict__[cls.__name__] = cls
+                classes.append((cls, class_file))
+
+                # Import the local names.
+
+                for external_name in external_names:
+                    external_name_parts = external_name.split(".")
+                    if len(external_name_parts) > 1:
+                        external_module_name = ".".join(external_name_parts[:-1])
+                        print "* Importing", external_module_name
+                        obj = __import__(external_module_name, global_names, {}, [])
+                        global_names[external_name_parts[0]] = obj
+
+            # Finally, call __clinit__ methods for all relevant classes.
+
+            for cls, class_file in classes:
+                print "**", cls, class_file
+                if hasattr(cls, "__clinit__"):
+                    eval(cls.__clinit__.func_code, global_names)
 
         return module
 
