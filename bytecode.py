@@ -8,7 +8,14 @@ NOTE: Synchronized constructs are not actually supported.
 """
 
 import classfile
-from dis import opmap, cmp_op # for access to Python bytecode values and operators
+from dis import cmp_op # for access to Python bytecode values and operators
+try:
+    from dis import opmap
+except ImportError:
+    from dis import opname
+    opmap = {}
+    for i in range(0, len(opname)):
+        opmap[opname[i]] = i
 from UserDict import UserDict
 import new
 
