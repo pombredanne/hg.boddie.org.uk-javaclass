@@ -17,9 +17,19 @@ class BytecodeWriter:
     "A Python bytecode writer."
 
     def __init__(self):
-        self.loops = []
+        # A stack of loop block or exception block start positions.
+        self.blocks = []
+
+        # A stack of exception block handler pointers.
+        self.exception_handlers = []
+
+        # A dictionary mapping labels to jump instructions referencing such labels.
         self.jumps = {}
+
+        # The output values, including "lazy" subvalues which will need evaluating.
         self.output = []
+
+        # The current Python bytecode instruction position.
         self.position = 0
 
         # Stack depth estimation.
@@ -91,6 +101,7 @@ class BytecodeWriter:
             # NOTE: Assume a 16-bit value.
             self.output.append(value.values[0])
             self.output.append(value.values[1])
+            self.position += 2
         elif value <= 0xffff:
             self.output.append(value & 0xff)
             self.output.append((value & 0xff00) >> 8)
@@ -100,15 +111,18 @@ class BytecodeWriter:
             raise ValueError, value
 
     def setup_loop(self):
-        self.loops.push(self.position)
+        self.blocks.append(self.position)
         self.output.append(opmap["SETUP_LOOP"])
         self.position += 1
         self._write_value(0) # To be filled in later
 
     def end_loop(self):
-        current_loop_start = self.loops.pop()
+        current_loop_start = self.blocks.pop()
         self.jump_absolute(current_loop_start)
-        self.output[current_loop_start + 1] = self.position
+        # NOTE: Using 3 as the assumed length of the SETUP_LOOP instruction.
+        # NOTE: 8-bit limit.
+        self.output[current_loop_start + 1] = self.position - current_loop_start - 3
+        self.output[current_loop_start + 2] = 0
         self.pop_block()
 
     def jump_to_label(self, status, name):
@@ -128,7 +142,9 @@ class BytecodeWriter:
     def start_label(self, name):
         # Fill in all jump instructions.
         for jump_instruction, following_instruction in self.jumps[name]:
+            # NOTE: 8-bit limit.
             self.output[jump_instruction + 1] = self.position - following_instruction
+            self.output[jump_instruction + 2] = 0
         del self.jumps[name]
 
     def load_const_ret(self, value):
@@ -136,19 +152,32 @@ class BytecodeWriter:
         self.load_const(value)
 
     def ret(self, index):
-        # Previously, the constant stored on the stack by jsr/jsr_w was stored
-        # in a local variable. In the JVM, extracting the value from the local
-        # variable and jumping can be done at runtime. In the Python VM, any
-        # jump target must be known in advance and written into the bytecode.
-        self.load_fast(index)
-        for constant in self.constants_for_exceptions:
-            self.dup_top()              # Stack: actual-address, actual-address
-            self.load_const(constant)   # Stack: actual-address, actual-address, suggested-address
-            self.compare_op("==")       # Stack: actual-address, result
-            self.jump_to_label(0, "const")
-            self.jump_absolute(constant)
-            self.start_label("const")
-            self.pop_top()              # Stack: actual-address
+        self.end_finally()
+
+    def setup_except(self, target):
+        self.blocks.append(self.position)
+        self.exception_handlers.append(target)
+        self.output.append(opmap["SETUP_EXCEPT"])
+        self.position += 1
+        self._write_value(0) # To be filled in later
+
+    def setup_finally(self, target):
+        self.blocks.append(self.position)
+        self.exception_handlers.append(target)
+        self.output.append(opmap["SETUP_FINALLY"])
+        self.position += 1
+        self._write_value(0) # To be filled in later
+
+    def end_exception(self):
+        current_exception_start = self.blocks.pop()
+        # Convert the "lazy" absolute value.
+        current_exception_target = self.exception_handlers.pop()
+        target = current_exception_target.get_value()
+        # NOTE: Using 3 as the assumed length of the SETUP_* instruction.
+        # NOTE: 8-bit limit.
+        self.output[current_exception_start + 1] = target - current_exception_start - 3
+        self.output[current_exception_start + 2] = 0
+        # NOTE: The POP_BLOCK instruction gets slipped in before this method is called.
 
     # Complicated methods.
 
@@ -206,7 +235,7 @@ class BytecodeWriter:
     # Normal bytecode generators.
 
     def for_iter(self):
-        self.loops.push(self.position)
+        self.blocks.append(self.position)
         self.output.append(opmap["FOR_ITER"])
         self.position += 1
         self._write_value(0) # To be filled in later
@@ -347,6 +376,10 @@ class BytecodeWriter:
         self.output.append(opmap["POP_BLOCK"])
         self.position += 1
 
+    def end_finally(self):
+        self.output.append(opmap["END_FINALLY"])
+        self.position += 1
+
 # Utility classes and functions.
 
 class LazyDict(UserDict):
@@ -378,8 +411,9 @@ class LazyValue:
             raise ValueError, value
     def get_value(self):
         value = 0
-        for i in range(0, len(self.values)):
-            value = (value << 8) + self.values.pop().value
+        values = self.values[:]
+        for i in range(0, len(values)):
+            value = (value << 8) + values.pop().value
         return value
 
 class LazySubValue:
@@ -419,13 +453,65 @@ class BytecodeReader:
         self.class_file = class_file
         self.position_mapping = LazyDict()
 
-    def process(self, code, program):
+    def process(self, code, exception_table, program):
         self.java_position = 0
+
+        # Produce a structure which permits fast access to exception details.
+        exception_block_start = {}
+        exception_block_end = {}
+        exception_block_handler = {}
+        reversed_exception_table = exception_table[:]
+        reversed_exception_table.reverse()
+
+        # Later entries have wider coverage than earlier entries.
+        for exception in reversed_exception_table:
+            # Index start positions.
+            if not exception_block_start.has_key(exception.start_pc):
+                exception_block_start[exception.start_pc] = []
+            exception_block_start[exception.start_pc].append(exception)
+            # Index end positions.
+            if not exception_block_end.has_key(exception.end_pc):
+                exception_block_end[exception.end_pc] = []
+            exception_block_end[exception.end_pc].append(exception)
+            # Index handler positions.
+            if not exception_block_handler.has_key(exception.handler_pc):
+                exception_block_handler[exception.handler_pc] = []
+            exception_block_handler[exception.handler_pc].append(exception)
+
+        # Process each instruction in the code.
         while self.java_position < len(code):
             self.position_mapping[self.java_position] = program.position
+
+            # Insert exception handling constructs.
+            for exception in exception_block_start.get(self.java_position, []):
+                # Note that the absolute position is used.
+                if exception.catch_type == 0:
+                    program.setup_finally(self.position_mapping[exception.handler_pc])
+                else:
+                    program.setup_except(self.position_mapping[exception.handler_pc])
+
+            # Insert exception handler end details.
+            for exception in exception_block_end.get(self.java_position, []):
+                program.end_exception()
+
+            # Where handlers are begun, do not produce equivalent bytecode since
+            # the first handler instruction typically involves saving a local
+            # variable that is not applicable to the Python VM.
+            #if not exception_block_handler.get(self.java_position, []):
+
+            # Process the bytecode at the current position.
             bytecode = ord(code[self.java_position])
             mnemonic, number_of_arguments = self.java_bytecodes[bytecode]
-            self.process_bytecode(mnemonic, number_of_arguments, code, program)
+            number_of_arguments = self.process_bytecode(mnemonic, number_of_arguments, code, program)
+            next_java_position = self.java_position + 1 + number_of_arguments
+
+            # Insert exception handler end instructions.
+            for exception in exception_block_end.get(next_java_position, []):
+                program.pop_block()
+
+            # Only advance the JVM position after sneaking in extra Python
+            # instructions.
+            self.java_position = next_java_position
 
     def process_bytecode(self, mnemonic, number_of_arguments, code, program):
         if number_of_arguments is not None:
@@ -435,11 +521,10 @@ class BytecodeReader:
 
             # Call the handler.
             getattr(self, mnemonic)(arguments, program)
+            return number_of_arguments
         else:
             # Call the handler.
-            number_of_arguments = getattr(self, mnemonic)(code[self.java_position+1:], program)
-
-        self.java_position = self.java_position + 1 + number_of_arguments
+            return getattr(self, mnemonic)(code[self.java_position+1:], program)
 
     java_bytecodes = {
         # code : (mnemonic, number of following bytes, change in stack)
@@ -664,6 +749,14 @@ class BytecodeDisassembler(BytecodeReader):
 
 class BytecodeDisassemblerProgram:
     position = 0
+    def setup_except(self, target):
+        print "(setup_except %s)" % target
+    def setup_finally(self, target):
+        print "(setup_finally %s)" % target
+    def end_exception(self):
+        print "(end_exception)"
+    def pop_block(self):
+        print "(pop_block)"
 
 class BytecodeTranslator(BytecodeReader):
 
@@ -763,7 +856,8 @@ class BytecodeTranslator(BytecodeReader):
     def checkcast(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_name()
-        target_components = target_name.split("/")
+        # NOTE: Using the string version of the name which may contain incompatible characters.
+        target_components = str(target_name).split("/")
 
         program.dup_top()                   # Stack: objectref, objectref
         program.load_global("isinstance")   # Stack: objectref, objectref, isinstance
@@ -1065,7 +1159,8 @@ class BytecodeTranslator(BytecodeReader):
     def instanceof(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_name()
-        target_components = target_name.split("/")
+        # NOTE: Using the string version of the name which may contain incompatible characters.
+        target_components = str(target_name).split("/")
 
         program.load_global("isinstance")   # Stack: objectref, isinstance
         program.rot_two()                   # Stack: isinstance, objectref
@@ -1401,15 +1496,15 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: To be implemented.
         return number_of_arguments
 
-def disassemble(class_file, code):
+def disassemble(class_file, code, exception_table):
     disassembler = BytecodeDisassembler(class_file)
-    disassembler.process(code, BytecodeDisassemblerProgram())
+    disassembler.process(code, exception_table, BytecodeDisassemblerProgram())
 
-def translate(class_file, code):
+def translate(class_file, code, exception_table):
     translator = BytecodeTranslator(class_file)
     writer = BytecodeWriter()
-    translator.process(code, writer)
-    return writer
+    translator.process(code, exception_table, writer)
+    return translator, writer
 
 if __name__ == "__main__":
     import sys
