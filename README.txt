@@ -137,8 +137,10 @@ about the Python libraries.
 Issues
 ------
 
-The test program crashes, fairly quickly under Python 2.4, too. There seems
-to be some kind of memory allocation problem.
+Fix the class initialisation so that non-Java classes (and already imported
+classes) are obtained. Prevent re-entry into module importing for modules
+already being imported (if this is not handled already by the Python import
+mechanisms).
 
 Implement better importing mechanisms so that circular module dependencies
 can be avoided. For example, when dealing with java.lang classes which
@@ -147,6 +149,9 @@ the classes should all be imported but only initialised after no more
 importing is necessary. Since usage of external names is recorded in the
 bytecode translation process, it should be possible to reach such a
 condition definitively.
+
+The test program crashes, fairly quickly under Python 2.4, too. There seems
+to be some kind of memory allocation problem.
 
 Investigate better exception raising. Currently, exceptions have to be
 derived from object so that object.__new__ can be used upon them. However,
