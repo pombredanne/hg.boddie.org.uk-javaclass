@@ -40,99 +40,31 @@ class NameUtils:
             # Some name indexes are zero to indicate special conditions.
             return None
 
-# Constant information.
-# Objects of these classes are not directly aware of the class they reside in.
+class NameAndTypeUtils:
+    def get_name(self):
+        if self.name_and_type_index != 0:
+            return self.class_file.constants[self.name_and_type_index - 1].get_name()
+        else:
+            # Some name indexes are zero to indicate special conditions.
+            return None
 
-class ClassInfo(NameUtils):
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.name_index = u2(data[0:2])
-        return data[2:]
+    def get_field_descriptor(self):
+        if self.name_and_type_index != 0:
+            return self.class_file.constants[self.name_and_type_index - 1].get_field_descriptor()
+        else:
+            # Some name indexes are zero to indicate special conditions.
+            return None
 
-class RefInfo:
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.class_index = u2(data[0:2])
-        self.name_and_type_index = u2(data[2:4])
-        return data[4:]
+    def get_method_descriptor(self):
+        if self.name_and_type_index != 0:
+            return self.class_file.constants[self.name_and_type_index - 1].get_method_descriptor()
+        else:
+            # Some name indexes are zero to indicate special conditions.
+            return None
 
-class FieldRefInfo(RefInfo):
-    pass
+class DescriptorUtils:
 
-class MethodRefInfo(RefInfo):
-    pass
-
-class InterfaceMethodRefInfo(RefInfo):
-    pass
-
-class NameAndTypeInfo(NameUtils):
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.name_index = u2(data[0:2])
-        self.descriptor_index = u2(data[2:4])
-        return data[4:]
-
-class Utf8Info:
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.length = u2(data[0:2])
-        self.bytes = data[2:2+self.length]
-        return data[2+self.length:]
-
-    def __str__(self):
-        return self.bytes
-
-    def __unicode__(self):
-        return unicode(self.bytes, "utf-8")
-
-class StringInfo:
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.string_index = u2(data[0:2])
-        return data[2:]
-
-class SmallNumInfo:
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.bytes = data[0:4]
-        return data[4:]
-
-class IntegerInfo(SmallNumInfo):
-    def get_value(self):
-        return s4(self.bytes)
-
-class FloatInfo(SmallNumInfo):
-    def get_value(self):
-        return f4(self.bytes)
-
-class LargeNumInfo:
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.high_bytes = u4(data[0:4])
-        self.low_bytes = u4(data[4:8])
-        return data[8:]
-
-class LongInfo(LargeNumInfo):
-    def get_value(self):
-        return s8(self.high_bytes + self.low_bytes)
-
-class DoubleInfo(LargeNumInfo):
-    def get_value(self):
-        return f8(self.high_bytes + self.low_bytes)
-
-# Other information.
-# Objects of these classes are generally aware of the class they reside in.
-
-class ItemInfo(NameUtils):
-    def init(self, data, class_file):
-        self.class_file = class_file
-        self.access_flags = u2(data[0:2])
-        self.name_index = u2(data[2:4])
-        self.descriptor_index = u2(data[4:6])
-        self.attributes, data = self.class_file._get_attributes(data[6:])
-        return data
-
-    # Symbol parsing.
+    "Symbol parsing."
 
     def _get_method_descriptor(self, s):
         assert s[0] == "("
@@ -185,6 +117,107 @@ class ItemInfo(NameUtils):
             return self._get_component_type(s)
         else:
             return None, s
+
+# Constant information.
+# Objects of these classes are not directly aware of the class they reside in.
+
+class ClassInfo(NameUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.name_index = u2(data[0:2])
+        return data[2:]
+
+class RefInfo(NameAndTypeUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.class_index = u2(data[0:2])
+        self.name_and_type_index = u2(data[2:4])
+        return data[4:]
+
+class FieldRefInfo(RefInfo):
+    def get_descriptor(self):
+        return RefInfo.get_field_descriptor(self)
+
+class MethodRefInfo(RefInfo):
+    def get_descriptor(self):
+        return RefInfo.get_method_descriptor(self)
+
+class InterfaceMethodRefInfo(RefInfo):
+    def get_descriptor(self):
+        return RefInfo.get_method_descriptor(self)
+
+class NameAndTypeInfo(NameUtils, DescriptorUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.name_index = u2(data[0:2])
+        self.descriptor_index = u2(data[2:4])
+        return data[4:]
+
+    def get_field_descriptor(self):
+        return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+
+    def get_method_descriptor(self):
+        return self._get_method_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+
+class Utf8Info:
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.length = u2(data[0:2])
+        self.bytes = data[2:2+self.length]
+        return data[2+self.length:]
+
+    def __str__(self):
+        return self.bytes
+
+    def __unicode__(self):
+        return unicode(self.bytes, "utf-8")
+
+class StringInfo:
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.string_index = u2(data[0:2])
+        return data[2:]
+
+class SmallNumInfo:
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.bytes = data[0:4]
+        return data[4:]
+
+class IntegerInfo(SmallNumInfo):
+    def get_value(self):
+        return s4(self.bytes)
+
+class FloatInfo(SmallNumInfo):
+    def get_value(self):
+        return f4(self.bytes)
+
+class LargeNumInfo:
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.high_bytes = u4(data[0:4])
+        self.low_bytes = u4(data[4:8])
+        return data[8:]
+
+class LongInfo(LargeNumInfo):
+    def get_value(self):
+        return s8(self.high_bytes + self.low_bytes)
+
+class DoubleInfo(LargeNumInfo):
+    def get_value(self):
+        return f8(self.high_bytes + self.low_bytes)
+
+# Other information.
+# Objects of these classes are generally aware of the class they reside in.
+
+class ItemInfo(NameUtils, DescriptorUtils):
+    def init(self, data, class_file):
+        self.class_file = class_file
+        self.access_flags = u2(data[0:2])
+        self.name_index = u2(data[2:4])
+        self.descriptor_index = u2(data[4:6])
+        self.attributes, data = self.class_file._get_attributes(data[6:])
+        return data
 
 class FieldInfo(ItemInfo):
     def get_descriptor(self):
