@@ -146,6 +146,26 @@ class Class(Object):
     # NOTE: To be enhanced.
     forName___java__lang__String____Z____java__lang__ClassLoader = staticmethod(forName)
 
+class Integer(Object):
+    def init_int(self, i):
+        self.i = i
+
+    def init_String(self, s):
+        self.i = int(s.value)
+
+    def __init__(self, *args):
+        if len(args) == 1 and isinstance(args[0], int):
+            self.init_int(args[0])
+        elif len(args) == 1 and isinstance(args[0], String):
+            self.init_String(args[0])
+
+    def toString(self):
+        return String(str(self.i))
+    toString___ = toString
+
+setattr(Integer, "__init______I_", Integer.init_int)
+setattr(Integer, "__init_____java__lang__String", Integer.init_String)
+
 class String(Object):
 
     # NOTE: This method should not be needed, really.
@@ -155,30 +175,14 @@ class String(Object):
     def __unicode__(self):
         return self.value
 
-    def init__empty(self):
+    def init_empty(self):
+        "__init__(self)"
         self.value = u""
 
-    def init__String(self, obj):
+    def init_String(self, obj):
+        "__init__(self, original)"
         self.value = obj.value
 
-    def __init__(self, *args):
-
-        "Python string initialisation only."
-
-        if len(args) == 1 and isinstance(args[0], str):
-            self.value = unicode(args[0])
-            return
-        elif len(args) == 1 and isinstance(args[0], unicode):
-            self.value = args[0]
-            return
-        # __init__(self)
-        elif len(args) == 0:
-            self.__init__empty()
-            return
-        # __init__(self, original)
-        elif len(args) == 1 and isinstance(args[0], String):
-            self.init__String(args[0])
-            return
         # __init__(self, value)
         # __init__(self, value, offset, count)
         # __init__(self, ascii, hibyte, offset, count)
@@ -187,10 +191,20 @@ class String(Object):
         # __init__(self, bytes, enc)
         # __init__(self, bytes, offset, length)
         # __init__(self, bytes)
-        elif len(args) >= 1 and isinstance(args[0], list):
-            raise NotImplementedError, "__init__"
         # __init__(self, buffer)
-        raise NotImplementedError, "__init__"
+
+    def __init__(self, *args):
+
+        "Python string initialisation only."
+
+        if len(args) == 0:
+            self.init_empty()
+        elif len(args) == 1 and isinstance(args[0], str):
+            self.value = unicode(args[0])
+        elif len(args) == 1 and isinstance(args[0], unicode):
+            self.value = args[0]
+        elif len(args) == 1 and isinstance(args[0], String):
+            self.init_String(args[0])
 
     def length(self):
         return len(self.value)
@@ -332,8 +346,57 @@ class String(Object):
     def intern(self):
         raise NotImplementedError, "intern"
 
-setattr(String, "__init_____", String.init__empty)
-setattr(String, "__init_____java__lang__String", String.init__String)
+setattr(String, "__init_____", String.init_empty)
+setattr(String, "__init_____java__lang__String", String.init_String)
+
+class StringBuffer(Object):
+
+    "Used when adding String objects."
+
+    def __unicode__(self):
+        return u"".join(self.buffer)
+
+    def __str__(self):
+        unicode(self).encode("utf-8")
+
+    def init_empty(self):
+        self.buffer = []
+
+    def init_int(self, length):
+        self.buffer = []
+
+    def init_String(self, s):
+        self.buffer = [unicode(s)]
+
+    def __init__(self, *args):
+        if len(args) == 0:
+            self.init_empty()
+        elif len(args) == 1 and isinstance(args[0], int):
+            self.init_int(args[0])
+        elif len(args) == 1 and isinstance(args[0], String):
+            self.init_String(args[0])
+
+    def append(self, s):
+        sb = StringBuffer(String(unicode(self) + unicode(s)))
+        return sb
+    append____Z_ = append
+    append____C_ = append
+    append____C__array_ = append
+    append____C__array_____I_____I_ = append
+    append____D_ = append
+    append____F_ = append
+    append____I_ = append
+    append____J_ = append
+    append___java__lang__Object = append
+    append___java__lang__String = append
+
+    def toString(self):
+        return String("".join(self.buffer))
+    toString___ = toString
+
+setattr(StringBuffer, "__init_____", StringBuffer.init_empty)
+setattr(StringBuffer, "__init______I_", StringBuffer.init_int)
+setattr(StringBuffer, "__init_____java__lang__String", StringBuffer.init_String)
 
 class System(Object):
     # NOTE: Fix this - circular import nonsense!
