@@ -30,6 +30,8 @@ def f4(data):
 def f8(data):
     return struct.unpack(">d", data[0:8])[0]
 
+# Useful tables and constants.
+
 descriptor_base_type_mapping = {
     "B" : "int",
     "C" : "str",
@@ -43,6 +45,13 @@ descriptor_base_type_mapping = {
     "[" : "list"
     }
 
+PUBLIC, PRIVATE, PROTECTED, STATIC, FINAL,  SUPER,  SYNCHRONIZED, VOLATILE, TRANSIENT, NATIVE, INTERFACE, ABSTRACT, STRICT = \
+0x0001, 0x0002,  0x0004,    0x0008, 0x0010, 0x0020, 0x0020,       0x0040,   0x0080,    0x0100, 0x0200,    0x0400,   0x0800
+
+def has_flags(flags, desired):
+    desired_flags = reduce(lambda a, b: a | b, desired, 0)
+    return (flags & desired_flags) == desired_flags
+
 # Useful mix-ins.
 
 class PythonMethodUtils:
@@ -50,6 +59,8 @@ class PythonMethodUtils:
         name = self.get_name()
         if str(name) == "<init>":
             name = "__init__"
+        elif str(name) == "<clinit>":
+            return "__clinit__"
         else:
             name = str(name)
         return name + "$" + self._get_descriptor_as_name()
