@@ -91,6 +91,15 @@ class Character(object):
         # compareTo(self, o)
         raise NotImplementedError, "compareTo"
 
+# NOTE: Establish a better exception hierarchy.
+
+class IllegalArgumentException(object):
+    def __init__(self, *args):
+        self.args = args
+
+setattr(IllegalArgumentException, "__init_____", IllegalArgumentException.__init__)
+setattr(IllegalArgumentException, "__init_____java__lang__String", IllegalArgumentException.__init__)
+
 class String(object):
 
     def init__empty(self):
@@ -127,70 +136,126 @@ class String(object):
             raise NotImplementedError, "__init__"
         # __init__(self, buffer)
         raise NotImplementedError, "__init__"
+
     def length(self):
         return len(self.value)
+    length___ = length
+
     def charAt(self, index):
-        return self.value[index]
+        return ord(self.value[index])
+    charAt____I_ = charAt
+
     def getChars(self, srcBegin, srcEnd, dst, dstBegin):
         raise NotImplementedError, "getChars"
+    getChars____I_____I_____C__array_____I_ = getChars
+
     def getBytes(self, *args):
         # void getBytes(self, srcBegin, srcEnd, dst, dstBegin)
         # byte[] getBytes(self, enc)
         # byte[] getBytes(self)
         raise NotImplementedError, "getBytes"
+    getBytes___ = getBytes
+    getBytes____I_____I_____B__array_____I_ = getBytes
+
     def equals(self, anObject):
-        raise NotImplementedError, "equals"
+        return isinstance(anObject, self.__class__) and self.value == anObject.value
+    equals___java__lang__Object = equals
+
     def compareTo(self, obj):
-        raise NotImplementedError, "compareTo"
-    # NOTE: Comparator defined using private classes.
+        if self.value < obj.value:
+            return -1
+        elif self.value == obj.value:
+            return 0
+        else:
+            return 1
+    compareTo___java__lang__String = compareTo
+
+    # NOTE: Comparator defined using private classes. This implementation just
+    # NOTE: uses Python's lower method.
     def compareToIgnoreCase(self, str):
-        raise NotImplementedError, "compareToIgnoreCase"
+        value = self.value.lower()
+        value2 = str.value.lower()
+        if value < value2:
+            return -1
+        elif value == value2:
+            return 0
+        else:
+            return 1
+    compareToIgnoreCase___java__lang__String = compareToIgnoreCase
+
+    # NOTE: Comparator defined using private classes. This implementation just
+    # NOTE: uses Python's lower method.
+    def equalsIgnoreCase(self, anotherString):
+        value = self.value.lower()
+        value2 = anotherString.value.lower()
+        return value == value2
+    equalsIgnoreCase___java__lang__String = equalsIgnoreCase
+
     def regionMatches(self, *args):
         # regionMatches(self, toffset, other, ooffset, len)
         # regionMatches(self, ignoreCase, toffset, other, ooffset, len)
         raise NotImplementedError, "regionMatches"
+
     def startsWith(self, *args):
         # startsWith(self, prefix, toffset)
         # startsWith(self, prefix)
         raise NotImplementedError, "startsWith"
+
     def endsWith(self, suffix):
         raise NotImplementedError, "endsWith"
+
     def hashCode(self):
         raise NotImplementedError, "hashCode"
-    def indexOf(self, *args):
-        # indexOf(self, ch)
-        # indexOf(self, ch, fromIndex)
-        # indexOf(self, str)
-        # indexOf(self, str, fromIndex)
-        raise NotImplementedError, "indexOf"
+
+    def indexOf____I_(self, ch):
+        return self.value.find(chr(ch))
+
+    def indexOf____I_____I_(self, ch, fromIndex):
+        return self.value.find(chr(ch), fromIndex)
+
+    def indexOf___java__lang__String___(self, str):
+        return self.value.find(str.value)
+
+    def indexOf___java__lang__String____I_(self, str, fromIndex):
+        return self.value.find(str.value, fromIndex)
+
     def lastIndexOf(self, *args):
         # lastIndexOf(self, ch)
         # lastIndexOf(self, ch, fromIndex)
         # lastIndexOf(self, str)
         # lastIndexOf(self, str, fromIndex)
         raise NotImplementedError, "lastIndexOf"
+
     def substring(self, *args):
         # substring(self, beginIndex)
         # substring(self, beginIndex, endIndex)
         raise NotImplementedError, "substring"
+
     def concat(self, str):
         raise NotImplementedError, "concat"
+
     def replace(self, oldChar, newChar):
         raise NotImplementedError, "replace"
+
     def toLowerCase(self, *args):
         # toLowerCase(self, locale)
         # toLowerCase(self)
         raise NotImplementedError, "toLowerCase"
+
     def toUpperCase(self, *args):
         # toUpperCase(self, locale)
         # toUpperCase(self)
         raise NotImplementedError, "toUpperCase"
+
     def trim(self):
         raise NotImplementedError, "trim"
+
     def toString(self):
         return self
+
     def toCharArray(self):
         raise NotImplementedError, "toCharArray"
+
     def valueOf(self, *args):
         # valueOf(self, obj)
         # valueOf(self, data)
@@ -202,15 +267,17 @@ class String(object):
         # valueOf(self, d)
         raise NotImplementedError, "valueOf"
     valueOf = staticmethod(valueOf)
+
     def copyValueOf(self, *args):
         # copyValueOf(self, data, offset, count)
         # copyValueOf(self, data)
         raise NotImplementedError, "copyValueOf"
     copyValueOf = staticmethod(copyValueOf)
+
     def intern(self):
         raise NotImplementedError, "intern"
 
-setattr(String, "__init__$", String.init__empty)
-setattr(String, "__init__$java/lang/String", String.init__String)
+setattr(String, "__init_____", String.init__empty)
+setattr(String, "__init_____java__lang__String", String.init__String)
 
 # vim: tabstop=4 expandtab shiftwidth=4
