@@ -28,7 +28,7 @@ program concerned, of course.</p>
 
 <p>You can run Java classes by finding one with a main method and executing
 it. Here's a comparison of a freshly prepared Java class being run in Python
-and in a Java virtual machine:</p>
+and in a Java virtual machine respectively:</p>
 
 <p class="prompt">cd tests/</p>
 
@@ -141,7 +141,7 @@ what you want it to:</p>
     transforming it, optimising it, and so on. (Instead, there's been more
     emphasis on lots of runtime baggage for things which could be done by
     analysis of the code with modified bytecode being produced as a result,
-    and let's not get started on some of the syntactical enhancements.)
+    and let's not get started on some of the syntax enhancements!)
     Consequently, stability might be an issue for some configurations,
     especially since CPython doesn't fail particularly graciously with badly
     behaved bytecode.</li>
@@ -192,6 +192,22 @@ what you want it to:</p>
     several places on the PYTHONPATH, and this is something that generally
     isn't allowed/supported with the classic Python module import
   mechanisms.</li>
+  <li>Most Java programs need standard Java library (also known as the Java
+    API) classes; indeed, with <code>java.lang.String</code> and seemingly
+    <code>java.lang.StringBuffer</code> required just for the usage of
+    strings, and with the classic <code>main</code> method having
+    <code>String[]</code> in its signature, some kind of library
+    implementation is obviously necessary. Whilst importing everything from
+    the .jar files bundled with Sun's JRE might be tempting, there may be a
+    certain amount of native calling going on in secret which would defeat
+    this approach, and anyone seriously interested in running Java code in
+    Python should really want to steer clear of such proprietary dependencies
+    anyway. It could be possible to wrap and make use of GNU Classpath or
+    some other open source Java API implementation, but the cleanest (but not
+    necessarily the least time-consuming) approach is surely to implement the
+    standard API classes in Python, and a package called <code>java</code> is
+    included which contains some fairly quick and dirty implementations to
+    get things working.</li>
 </ul>
 
 <h2>Suggestions for Python Improvements</h2>
