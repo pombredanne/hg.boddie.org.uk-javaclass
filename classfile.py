@@ -173,7 +173,7 @@ class MethodRefInfo(RefInfo, PythonMethodUtils):
 class InterfaceMethodRefInfo(MethodRefInfo):
     pass
 
-class NameAndTypeInfo(NameUtils, DescriptorUtils, PythonMethodUtils):
+class NameAndTypeInfo(NameUtils, DescriptorUtils, PythonNameUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.name_index = u2(data[0:2])
@@ -237,7 +237,7 @@ class DoubleInfo(LargeNumInfo):
 # Other information.
 # Objects of these classes are generally aware of the class they reside in.
 
-class ItemInfo(NameUtils, DescriptorUtils, PythonMethodUtils):
+class ItemInfo(NameUtils, DescriptorUtils):
     def init(self, data, class_file):
         self.class_file = class_file
         self.access_flags = u2(data[0:2])
@@ -246,11 +246,11 @@ class ItemInfo(NameUtils, DescriptorUtils, PythonMethodUtils):
         self.attributes, data = self.class_file._get_attributes(data[6:])
         return data
 
-class FieldInfo(ItemInfo):
+class FieldInfo(ItemInfo, PythonNameUtils):
     def get_descriptor(self):
         return self._get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
-class MethodInfo(ItemInfo):
+class MethodInfo(ItemInfo, PythonMethodUtils):
     def get_descriptor(self):
         return self._get_method_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
