@@ -2007,7 +2007,7 @@ class BytecodeTranslator(BytecodeReader):
 
     def wide(self, code, program):
         # NOTE: To be implemented.
-        return number_of_arguments
+        raise NotImplementedError, "wide"
 
 def disassemble(class_file, method):
     disassembler = BytecodeDisassembler(class_file)
@@ -2340,7 +2340,10 @@ class ClassTranslator:
             obj = __import__(super_class_module_name, global_names, {}, [])
             for super_class_name_part in super_class_name_parts[1:] or [super_class_name]:
                 #print "*", obj, super_class_name_part
-                obj = getattr(obj, super_class_name_part)
+                try:
+                    obj = getattr(obj, super_class_name_part)
+                except AttributeError:
+                    raise AttributeError, "Cannot find class '%s' in Java package '%s'" % (super_class_name_part, super_class_module_name)
         return (obj,)
 
     def make_varnames(self, nlocals, method_is_static=0):
