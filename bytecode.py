@@ -1209,6 +1209,7 @@ class BytecodeTranslator(BytecodeReader):
         program.load_fast(arguments[0])
         program.load_const(arguments[1])
         program.binary_add()
+        program.store_fast(arguments[0])
 
     iload = fload
     iload_0 = fload_0
