@@ -1,5 +1,5 @@
 public class Value {
-    private int value;
+    protected int value;
 
     public Value(int value) {
         this.value = value;
