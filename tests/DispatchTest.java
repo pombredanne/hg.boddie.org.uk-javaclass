@@ -30,12 +30,16 @@ public class DispatchTest {
         this.b = b;
     }
 
+    // The ordering of the methods probably should not prevent the most specific
+    // method from being chosen, but this happens with a linear search of
+    // appropriate methods.
+
     public int test(DispatchInterface obj) {
         return obj.test();
     }
 
     public int test(DispatchClass1 obj) {
-        return obj.test();
+        return obj.test() + 10;
     }
 
     public int testTest(DispatchInterface obj) {
