@@ -2298,14 +2298,13 @@ class ClassTranslator:
 
             self.namespace[method_name] = fn
 
-        # Add the super class as an external name, if appropriate.
+        # Add the base classes as external names, if appropriate.
 
-        if self.class_file.super_class is not None:
-            external_names.append(self.class_file.super_class.get_python_name())
+        external_names += [class_.get_python_name() for class_ in self.get_base_class_references()]
 
         return external_names
 
-    def get_class(self, global_names):
+    def get_class(self, global_names, classes):
 
         """
         Get the Python class representing the underlying Java class, using the
@@ -2314,7 +2313,7 @@ class ClassTranslator:
 
         # Define superclasses.
 
-        bases = self.get_base_classes(global_names)
+        bases = self.get_base_classes(classes)
 
         # Define method dispatchers.
 
@@ -2338,33 +2337,27 @@ class ClassTranslator:
         class_names += self.class_file.interfaces
         return class_names
 
-    def get_base_classes(self, global_names):
+    def get_base_classes(self, classes):
 
         """
-        Identify the superclass, then either load it from the given
-        'global_names' if available, or import the class from its parent module.
-        Return a tuple containing all base classes (typically a single element
-        tuple).
+        Identify the superclass, obtaining it from the given 'classes'
+        dictionary. Return a tuple containing all base classes (usually a single
+        element tuple).
         """
 
         base_classes = []
 
         for class_ in self.get_base_class_references():
-            base_classes.append(self._get_class(class_, global_names))
+            base_classes.append(self._get_class(class_, classes))
 
         return tuple(base_classes)
 
-    def _get_class(self, class_, global_names):
-        class_name = class_.get_python_name()
-        class_name_parts = class_name.split(".")
-        obj = global_names
-        for class_name_part in class_name_parts[:-1]:
-            try:
-                obj = obj[class_name_part].__dict__
-            except KeyError:
-                raise AttributeError, "Cannot find '%s' when referencing Java class '%s'" % (
-                    class_name_part, class_name)
-        return obj[class_name_parts[-1]]
+    def _get_class(self, class_, classes):
+        class_name = str(class_.get_name())
+        try:
+            return classes[class_name]
+        except KeyError:
+            raise AttributeError, "Cannot find Java class '%s'" % class_name
 
     def make_varnames(self, nlocals, method_is_static=0):
 
