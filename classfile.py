@@ -30,6 +30,19 @@ def f4(data):
 def f8(data):
     return struct.unpack(">d", data[0:8])[0]
 
+descriptor_base_type_mapping = {
+    "B" : "int",
+    "C" : "str",
+    "D" : "float",
+    "F" : "float",
+    "I" : "int",
+    "J" : "int",
+    "L" : "object",
+    "S" : "int",
+    "Z" : "bool",
+    "[" : "list"
+    }
+
 # Useful mix-ins.
 
 class PythonMethodUtils:
