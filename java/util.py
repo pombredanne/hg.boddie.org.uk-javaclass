@@ -116,6 +116,11 @@ class HashMap(AbstractMap):
     def items(self):
         return self.d.items()
 
+    # NOTE: Private interface for cases where the above methods are not enough.
+
+    # def as_dict(self):
+        # return self.d
+
 setattr(HashMap, "__init_____", HashMap.__init__)
 setattr(HashMap, "__init_____java__util__Map", HashMap.init_____java__util__Map)
 
