@@ -34,4 +34,9 @@ public class Application extends tkjava.Frame {
         this.hiThere.__setitem__("command", sayHello);
         this.hiThere.pack();
     }
+
+    public static void main(String[] args) {
+        Application app = new Application();
+        app.mainloop();
+    }
 }
