@@ -5,7 +5,7 @@ Java class file decoder. Specification found at the following URL:
 http://java.sun.com/docs/books/vmspec/2nd-edition/html/ClassFile.doc.html
 """
 
-import struct
+import struct # for general decoding of class files
 
 # Utility functions.
 
@@ -17,6 +17,18 @@ def u2(data):
 
 def u4(data):
     return struct.unpack(">L", data[0:4])[0]
+
+def s4(data):
+    return struct.unpack(">l", data[0:4])[0]
+
+def s8(data):
+    return struct.unpack(">q", data[0:8])[0]
+
+def f4(data):
+    return struct.unpack(">f", data[0:4])[0]
+
+def f8(data):
+    return struct.unpack(">d", data[0:8])[0]
 
 # Useful mix-ins.
 
@@ -82,14 +94,16 @@ class StringInfo:
 class SmallNumInfo:
     def init(self, data, class_file):
         self.class_file = class_file
-        self.bytes = u4(data[0:4])
+        self.bytes = data[0:4]
         return data[4:]
 
 class IntegerInfo(SmallNumInfo):
-    pass
+    def get_value(self):
+        return s4(self.bytes)
 
 class FloatInfo(SmallNumInfo):
-    pass
+    def get_value(self):
+        return f4(self.bytes)
 
 class LargeNumInfo:
     def init(self, data, class_file):
@@ -99,10 +113,12 @@ class LargeNumInfo:
         return data[8:]
 
 class LongInfo(LargeNumInfo):
-    pass
+    def get_value(self):
+        return s8(self.high_bytes + self.low_bytes)
 
 class DoubleInfo(LargeNumInfo):
-    pass
+    def get_value(self):
+        return f8(self.high_bytes + self.low_bytes)
 
 # Other information.
 # Objects of these classes are generally aware of the class they reside in.
@@ -195,10 +211,14 @@ class SourceFileAttributeInfo(AttributeInfo, NameUtils):
 
 class ConstantValueAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
+        self.class_file = class_file
         self.attribute_length = u4(data[0:4])
         self.constant_value_index = u2(data[4:6])
         assert 4+self.attribute_length == 6
         return data[4+self.attribute_length:]
+
+    def get_value(self):
+        return self.class_file.constants[self.constant_value_index - 1].get_value()
 
 class CodeAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
