@@ -57,6 +57,9 @@ class BytecodeWriter:
         # A list of constants used as exception handler return addresses.
         self.constants_for_exceptions = []
 
+        # A list of external names.
+        self.external_names = []
+
     def get_output(self):
         output = []
         for element in self.output:
@@ -131,6 +134,12 @@ class BytecodeWriter:
         else:
             # NOTE: EXTENDED_ARG not yet supported.
             raise ValueError, value
+
+    # Higher level methods.
+
+    def use_external_name(self, name):
+        # NOTE: Remove array and object indicators.
+        self.external_names.append(name)
 
     def setup_loop(self):
         self.loops.append(self.position)
@@ -230,6 +239,7 @@ class BytecodeWriter:
         # NOTE: Since RAISE_VARARGS and END_FINALLY are not really documented,
         # NOTE: we store the top of the stack and use it later to trigger the
         # NOTE: magic processes when re-raising.
+        self.use_external_name(exc_name)
 
         self.rot_two()                      # Stack: raised-exception, exception
         self.dup_top()                      # Stack: raised-exception, exception, exception
@@ -953,6 +963,17 @@ class BytecodeTranslator(BytecodeReader):
 
     "A Java bytecode translator which uses a Python bytecode writer."
 
+    def _load_class_name(self, full_class_name, program):
+        this_class_name = str(self.class_file.this_class.get_python_name())
+        class_parts = full_class_name.split(".")
+        if full_class_name != this_class_name:
+            program.use_external_name(full_class_name)
+            program.load_global(class_parts[0])
+            for class_part in class_parts[1:]:
+                program.load_attr(class_part)   # Stack: classref
+        else:
+            program.load_global(class_parts[-1])
+
     def aaload(self, arguments, program):
         # NOTE: No type checking performed.
         program.binary_subscr()
@@ -1056,6 +1077,8 @@ class BytecodeTranslator(BytecodeReader):
     def checkcast(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
+        program.use_external_name(target_name)
+
         # NOTE: Using the string version of the name which may contain incompatible characters.
         target_components = str(target_name).split("/")
 
@@ -1193,11 +1216,13 @@ class BytecodeTranslator(BytecodeReader):
 
     def getstatic(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_python_name()
+        target = self.class_file.constants[index - 1]
+        target_name = target.get_python_name()
+
         # Get the class name instead of the fully qualified name.
-        full_class_name = str(self.class_file.this_class.get_python_name())
-        class_name = full_class_name.split(".")[-1]
-        program.load_global(class_name) # Stack: classref
+
+        full_class_name = target.get_class().get_python_name()
+        self._load_class_name(full_class_name, program)
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_attr(str(target_name))
 
@@ -1364,6 +1389,8 @@ class BytecodeTranslator(BytecodeReader):
     def instanceof(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
+        program.use_external_name(target_name)
+
         # NOTE: Using the string version of the name which may contain incompatible characters.
         target_components = str(target_name).split("/")
 
@@ -1403,19 +1430,25 @@ class BytecodeTranslator(BytecodeReader):
         target = self.class_file.constants[index - 1]
         original_name = target.get_name()
         target_name = target.get_python_name()
+
         # Get the number of parameters from the descriptor.
+
         count = len(target.get_descriptor()[0])
+
         # First, we build a tuple of the reference and arguments.
-        program.build_tuple(count + 1)      # Stack: tuple
+
+        program.build_tuple(count + 1)          # Stack: tuple
+
         # Get the class name instead of the fully qualified name.
-        # NOTE: Do proper resolution of classes,
         # NOTE: Not bothering with Object initialisation.
+
         full_class_name = target.get_class().get_python_name()
         if full_class_name not in ("java.lang.Object", "java.lang.Exception"):
-            class_name = full_class_name.split(".")[-1]
-            program.load_global(class_name) # Stack: tuple, classref
+            self._load_class_name(full_class_name, program)
             self._invoke(target_name, program)
+
         # Remove Python None return value.
+
         if str(original_name) == "<init>":
             program.pop_top()
 
@@ -1426,17 +1459,21 @@ class BytecodeTranslator(BytecodeReader):
         index = (arguments[0] << 8) + arguments[1]
         target = self.class_file.constants[index - 1]
         target_name = target.get_python_name()
+
         # Get the number of parameters from the descriptor.
+
         count = len(target.get_descriptor()[0])
+
         # Stack: arg1, arg2, ...
-        program.build_tuple(count)          # Stack: tuple
+
+        program.build_tuple(count)              # Stack: tuple
+
         # Use the class to provide access to static methods.
         # Get the class name instead of the fully qualified name.
-        # NOTE: Do proper resolution of classes,
+
         full_class_name = target.get_class().get_python_name()
         if full_class_name not in ("java.lang.Object", "java.lang.Exception"):
-            class_name = full_class_name.split(".")[-1]
-            program.load_global(class_name) # Stack: tuple, classref
+            self._load_class_name(full_class_name, program)
             self._invoke(target_name, program)
 
     def invokevirtual (self, arguments, program):
@@ -1544,22 +1581,24 @@ class BytecodeTranslator(BytecodeReader):
     def ldc(self, arguments, program):
         const = self.class_file.constants[arguments[0] - 1]
         if isinstance(const, classfile.StringInfo):
+            program.use_external_name("java.lang.String")
             program.load_global("java")
             program.load_attr("lang")
             program.load_attr("String")
             program.load_const(const.get_value())
-            program.call_function(2)
+            program.call_function(1)
         else:
             program.load_const(const)
 
     def ldc_w(self, arguments, program):
         const = self.class_file.constants[(arguments[0] << 8) + arguments[1] - 1]
         if isinstance(const, classfile.StringInfo):
+            program.use_external_name("java.lang.String")
             program.load_global("java")
             program.load_attr("lang")
             program.load_attr("String")
             program.load_const(const.get_value())
-            program.call_function(2)
+            program.call_function(1)
         else:
             program.load_const(const)
 
@@ -1675,12 +1714,15 @@ class BytecodeTranslator(BytecodeReader):
     def new(self, arguments, program):
         # This operation is considered to be the same as the calling of the
         # initialisation method of the given class with no arguments.
+
         index = (arguments[0] << 8) + arguments[1]
         target_name = self.class_file.constants[index - 1].get_python_name()
+        program.use_external_name(target_name)
+
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.load_global("object")
         program.load_attr("__new__")
-        program.load_global(str(target_name))
+        self._load_class_name(target_name, program)
         program.call_function(1)
 
     def newarray(self, arguments, program):
@@ -1705,12 +1747,13 @@ class BytecodeTranslator(BytecodeReader):
 
     def putstatic(self, arguments, program):
         index = (arguments[0] << 8) + arguments[1]
-        target_name = self.class_file.constants[index - 1].get_python_name()
+        target = self.class_file.constants[index - 1]
+        target_name = target.get_python_name()
+
         # Get the class name instead of the fully qualified name.
-        # NOTE: Need to find the class that declared the field being accessed.
-        full_class_name = str(self.class_file.this_class.get_python_name())
-        class_name = full_class_name.split(".")[-1]
-        program.load_global(class_name) # Stack: classref
+
+        full_class_name = target.get_class().get_python_name()
+        self._load_class_name(full_class_name, program)
         # NOTE: Using the string version of the name which may contain incompatible characters.
         program.store_attr(str(target_name))
 
@@ -1863,6 +1906,7 @@ class ClassTranslator:
                 program.store_fast(2)               # Stack: arguments (found = 1)
 
             # Emit a list of parameter types.
+
             descriptor_types = method.get_descriptor()[0]
             for descriptor_type in descriptor_types:
                 base_type, object_type, array_type = descriptor_type
@@ -2001,6 +2045,8 @@ class ClassTranslator:
 
         """
         Process the class, storing it in the 'global_names' dictionary provided.
+        Return a tuple containing the class and a list of external names
+        referenced by the class's methods.
         """
 
         namespace = {}
@@ -2015,11 +2061,19 @@ class ClassTranslator:
         # Make the methods.
 
         real_methods = {}
+        external_names = []
+
         for method in self.class_file.methods:
             real_method_name = str(method.get_name())
             method_name = str(method.get_python_name())
 
-            t, w = self.translate_method(method)
+            translator, writer = self.translate_method(method)
+
+            # Add external names to the master list.
+
+            for external_name in writer.external_names:
+                if external_name not in external_names:
+                    external_names.append(external_name)
 
             # Fix up special class initialisation methods and static methods.
 
@@ -2028,12 +2082,13 @@ class ClassTranslator:
                 nargs = len(method.get_descriptor()[0])
             else:
                 nargs = len(method.get_descriptor()[0]) + 1
-            nlocals = w.max_locals + 1
+            nlocals = writer.max_locals + 1
             flags = 67
 
             # NOTE: Add line number table later.
 
-            code = new.code(nargs, nlocals, w.max_stack_depth, flags, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
+            code = new.code(nargs, nlocals, writer.max_stack_depth, flags, writer.get_output(),
+                tuple(writer.get_constants()), tuple(writer.get_names()),
                 tuple(self.make_varnames(nlocals, method_is_static)), self.filename, method_name, 0, "")
 
             # NOTE: May need more globals.
@@ -2072,7 +2127,7 @@ class ClassTranslator:
         cls = new.classobj(class_name, bases, namespace)
         global_names[cls.__name__] = cls
 
-        return cls
+        return cls, external_names
 
     def get_base_classes(self, global_names):
 
@@ -2143,6 +2198,6 @@ if __name__ == "__main__":
         f = open(filename, "rb")
         c = classfile.ClassFile(f.read())
         translator = ClassTranslator(c)
-        cls = translator.process(global_names)
+        cls, external_names = translator.process(global_names)
 
 # vim: tabstop=4 expandtab shiftwidth=4
