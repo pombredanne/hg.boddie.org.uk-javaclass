@@ -48,8 +48,9 @@ public class ExceptionTest {
                 x = 2;
                 throw new MyOtherException();
             }
-        } finally {
             x = 1;
+        } finally {
+            x += 10;
         }
         return x;
     }
@@ -61,12 +62,13 @@ public class ExceptionTest {
             } else if (x == 1) {
                 throw new MyOtherException();
             }
+            x = 1;
         } catch (MyException exc) {
             x = 3;
         } catch (MyOtherException exc) {
             x = 2;
         } finally {
-            x = 1;
+            x += 10;
         }
         return x;
     }
