@@ -3,6 +3,7 @@
 "A program to run Java class files."
 
 import classhook
+import java.lang
 
 def load_class(class_name):
 
@@ -21,7 +22,7 @@ def load_class(class_name):
     return obj
 
 def run_class(cls, args):
-    cls.main(args)
+    cls.main([java.lang.String(arg) for arg in args])
 
 if __name__ == "__main__":
     import sys
