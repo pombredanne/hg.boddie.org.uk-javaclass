@@ -1924,7 +1924,11 @@ class ClassTranslator:
         "Initialise the object with the given 'class_file'."
 
         self.class_file = class_file
-        self.filename = str(self.class_file.attributes[0].get_name())
+        self.filename = ""
+
+        for attribute in self.class_file.attributes:
+            if isinstance(attribute, classfile.SourceFileAttributeInfo):
+                self.filename = str(attribute.get_name())
 
     def translate_method(self, method):
 
