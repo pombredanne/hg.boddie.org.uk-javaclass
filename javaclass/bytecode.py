@@ -1965,9 +1965,9 @@ class BytecodeTranslator(BytecodeReader):
         # Get the pertinent arguments.
 
         code = code[to_boundary:]
-        default = classfile.u4(code[0:4])
-        low = classfile.u4(code[4:8])
-        high = classfile.u4(code[8:12])
+        default = classfile.s4(code[0:4])
+        low = classfile.s4(code[4:8])
+        high = classfile.s4(code[8:12])
 
         # Process the jump entries.
         # NOTE: This is not the most optimal implementation.
@@ -2250,7 +2250,6 @@ class ClassTranslator:
         for method in self.class_file.methods:
             real_method_name = str(method.get_name())
             method_name = str(method.get_python_name())
-
             translator, writer = self.translate_method(method)
 
             # Add external names to the master list.
