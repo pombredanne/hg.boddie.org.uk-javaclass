@@ -99,6 +99,12 @@ class BytecodeWriter:
             # NOTE: EXTENDED_ARG not yet supported.
             raise ValueError, value
 
+    def setup_loop(self):
+        self.loops.push(self.position)
+        self.output.append(opmap["SETUP_LOOP"])
+        self.position += 1
+        self._write_value(0) # To be filled in later
+
     def end_loop(self):
         current_loop_start = self.loops.pop()
         self.jump_absolute(current_loop_start)
@@ -336,6 +342,10 @@ class BytecodeWriter:
         self.output.append(opmap["RAISE_VARARGS"])
         self.position += 1
         self._write_value(count)
+
+    def pop_block(self):
+        self.output.append(opmap["POP_BLOCK"])
+        self.position += 1
 
 # Utility classes and functions.
 
