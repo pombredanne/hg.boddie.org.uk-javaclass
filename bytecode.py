@@ -1926,10 +1926,12 @@ class ClassTranslator:
             if class_module_name == "":
                 class_module_name = "__this__"
             class_name = class_name_parts[-1]
-            print "*", class_module_name, class_name
-            class_module = __import__(class_module_name, global_names, {}, [])
-            base = getattr(class_module, class_name)
-            return (base,)
+            print "Importing", class_module_name, class_name
+            obj = __import__(class_module_name, global_names, {}, [])
+            for class_name_part in class_name_parts[1:] or [class_name]:
+                print "*", obj, class_name_part
+                obj = getattr(obj, class_name_part)
+            return (obj,)
 
     def make_varnames(self, nlocals):
 
