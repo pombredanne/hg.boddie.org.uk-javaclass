@@ -171,6 +171,19 @@ what you want it to:</p>
     people might start advocating decorators at this point, but not everyone
     is running the very latest stuff from python.org, and decorators won't
     help you target a specific specialised method anyway.</li>
+  <li>Special dispatcher methods are often generated for the benefit of
+    Python access to Java classes, even though such methods are not strictly
+    necessary for the Java classes to work amongst themselves. Such methods
+    are only generated when many methods of the same name reside in a given
+    class, since where Java distinguishes between them on the basis of the
+    signatures, Python permits only one method of a given name and needs
+    additional logic to dispatch to the actual method implementations on the
+    basis of the types of the incoming values. The implementation of the
+    dispatcher method is naive and does not try to order the type checks and
+    dispatches according to the specificity of the parameter types; thus, a
+    more reliable but more verbose way of ensuring that the correct method in
+    such cases is called from a Python program may be to use the special long
+    method name (eg. <code>setValue____I_</code>).</li>
   <li>Imported and translated bytecode is not written out or cached. This
     means that a fair amount of work happens every time you need to import
     Java classes, although the generation of .pyc files could be introduced
