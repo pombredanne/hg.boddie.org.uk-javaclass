@@ -144,3 +144,13 @@ exception's handler.
 
 Consider nicer ways of writing the method names in Python, perhaps using a
 function which takes the individual parameter types as arguments.
+
+Release Procedures
+------------------
+
+Update the javaclass/__init__.py __version__ attribute.
+Update the release notes (see above).
+Check the setup.py file and ensure that all package directories are mentioned.
+Tag, export.
+Rename ClassFile to javaclass (and add the release to the directory name).
+Archive, upload.
