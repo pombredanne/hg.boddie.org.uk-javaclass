@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-class FilterOutputStream(object):
+import java.lang
+
+class FilterOutputStream(java.lang.Object):
     def __init__(self, out):
         self.out = out
     def write(self, value, *args):
@@ -14,7 +16,7 @@ class FilterOutputStream(object):
     def close(self):
         self.out.close()
 
-class InputStream(object):
+class InputStream(java.lang.Object):
     def read(self, *args):
         raise NotImplementedError, "read"
     def skip(self, n):
@@ -30,7 +32,7 @@ class InputStream(object):
     def markSupported(self):
         raise NotImplementedError, "markSupported"
 
-class MessageFormat(object):
+class MessageFormat(java.lang.Object):
     def __init__(self, pattern):
         self.pattern = pattern
 
@@ -63,7 +65,7 @@ class MessageFormat(object):
     
 setattr(MessageFormat, "__init_____java__lang__String", MessageFormat.__init__)
 
-class OutputStream(object):
+class OutputStream(java.lang.Object):
     def write(self, b, *args):
         raise NotImplementedError, "write"
     def flush(self):
