@@ -30,6 +30,10 @@ public class Value {
     public int add(int value) {
         return this.value + value;
     }
+
+    public Value newValue() {
+        return new Value(this.getValue());
+    }
 }
 
 // vim: tabstop=4 expandtab shiftwidth=4
