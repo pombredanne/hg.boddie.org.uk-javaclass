@@ -15,6 +15,9 @@ def u1(data):
 def u2(data):
     return struct.unpack(">H", data[0:2])[0]
 
+def s2(data):
+    return struct.unpack(">h", data[0:2])[0]
+
 def u4(data):
     return struct.unpack(">L", data[0:4])[0]
 
@@ -223,11 +226,23 @@ class Utf8Info:
     def __unicode__(self):
         return unicode(self.bytes, "utf-8")
 
+    def get_value(self):
+        return str(self)
+
 class StringInfo:
     def init(self, data, class_file):
         self.class_file = class_file
         self.string_index = u2(data[0:2])
         return data[2:]
+
+    def __str__(self):
+        return str(self.class_file.constants[self.string_index - 1])
+
+    def __unicode__(self):
+        return unicode(self.class_file.constants[self.string_index - 1])
+
+    def get_value(self):
+        return str(self)
 
 class SmallNumInfo:
     def init(self, data, class_file):
@@ -246,8 +261,8 @@ class FloatInfo(SmallNumInfo):
 class LargeNumInfo:
     def init(self, data, class_file):
         self.class_file = class_file
-        self.high_bytes = u4(data[0:4])
-        self.low_bytes = u4(data[4:8])
+        self.high_bytes = data[0:4]
+        self.low_bytes = data[4:8]
         return data[8:]
 
 class LongInfo(LargeNumInfo):
@@ -292,6 +307,7 @@ class SourceFileAttributeInfo(AttributeInfo, NameUtils, PythonNameUtils):
         self.attribute_length = u4(data[0:4])
         # Permit the NameUtils mix-in.
         self.name_index = self.sourcefile_index = u2(data[4:6])
+        return data[6:]
 
 class ConstantValueAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
