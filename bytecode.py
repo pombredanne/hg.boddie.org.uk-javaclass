@@ -177,10 +177,12 @@ class BytecodeWriter:
 
     def ret(self, index):
         self.load_fast(index)
+
         # Previously, the constant stored on the stack by jsr/jsr_w was stored
         # in a local variable. In the JVM, extracting the value from the local
         # variable and jumping can be done at runtime. In the Python VM, any
         # jump target must be known in advance and written into the bytecode.
+
         for constant in self.constants_for_exceptions:
             self.dup_top()              # Stack: actual-address, actual-address
             self.load_const(constant)   # Stack: actual-address, actual-address, suggested-address
@@ -191,7 +193,9 @@ class BytecodeWriter:
             self.jump_absolute(constant)
             self.start_label("const")
             self.pop_top()              # Stack: actual-address
+
         # NOTE: If we get here, something is really wrong.
+
         self.pop_top()              # Stack:
 
     def setup_except(self, target):
@@ -220,8 +224,10 @@ class BytecodeWriter:
         self._rewrite_value(current_exception_start + 1, target - current_exception_start - 3)
 
     def start_handler(self, exc_name):
+
         # Where handlers are begun, produce bytecode to test the type of
         # the exception.
+
         self.dup_top()                      # Stack: exception, exception
         self.load_global(str(exc_name))     # Stack: exception, exception, handled-exception
         self.compare_op("exception match")  # Stack: exception, result
@@ -551,6 +557,7 @@ class BytecodeReader:
         self.method = method
 
         # NOTE: Potentially unreliable way of getting necessary information.
+
         code, exception_table = None, None
         for attribute in method.attributes:
             if isinstance(attribute, classfile.CodeAttributeInfo):
@@ -560,6 +567,7 @@ class BytecodeReader:
             return
 
         # Produce a structure which permits fast access to exception details.
+
         exception_block_start = {}
         exception_block_end = {}
         exception_block_handler = {}
@@ -567,38 +575,51 @@ class BytecodeReader:
         reversed_exception_table.reverse()
 
         # Later entries have wider coverage than earlier entries.
+
         for exception in reversed_exception_table:
+
             # Index start positions.
+
             if not exception_block_start.has_key(exception.start_pc):
                 exception_block_start[exception.start_pc] = []
             exception_block_start[exception.start_pc].append(exception)
+
             # Index end positions.
+
             if not exception_block_end.has_key(exception.end_pc):
                 exception_block_end[exception.end_pc] = []
             exception_block_end[exception.end_pc].append(exception)
+
             # Index handler positions.
+
             if not exception_block_handler.has_key(exception.handler_pc):
                 exception_block_handler[exception.handler_pc] = []
             exception_block_handler[exception.handler_pc].append(exception)
 
         # Process each instruction in the code.
+
         while self.java_position < len(code):
             self.position_mapping[self.java_position] = program.position
 
             # Insert exception handling constructs.
+
             block_starts = exception_block_start.get(self.java_position, [])
             for exception in block_starts:
+
                 # Note that the absolute position is used.
+
                 if exception.catch_type == 0:
                     program.setup_finally(self.position_mapping[exception.handler_pc])
                 else:
                     program.setup_except(self.position_mapping[exception.handler_pc])
+
             if block_starts:
                 self.in_finally = 0
 
             # Insert exception handler details.
             # NOTE: Ensure that pop_block is reachable by possibly inserting it at the start of finally handlers.
             # NOTE: Insert a check for the correct exception at the start of each handler.
+
             for exception in exception_block_handler.get(self.java_position, []):
                 program.end_exception()
                 if exception.catch_type == 0:
@@ -607,21 +628,26 @@ class BytecodeReader:
                     program.start_handler(self.class_file.constants[exception.catch_type - 1].get_python_name())
 
             # Process the bytecode at the current position.
+
             bytecode = ord(code[self.java_position])
             mnemonic, number_of_arguments = self.java_bytecodes[bytecode]
             number_of_arguments = self.process_bytecode(mnemonic, number_of_arguments, code, program)
             next_java_position = self.java_position + 1 + number_of_arguments
 
             # Insert exception block end details.
+
             for exception in exception_block_end.get(next_java_position, []):
+
                 # NOTE: Insert jump beyond handlers.
                 # NOTE: program.jump_forward/absolute(...)
                 # NOTE: Insert end finally at end of handlers as well as where "ret" occurs.
+
                 if exception.catch_type != 0:
                     program.pop_block()
 
             # Only advance the JVM position after sneaking in extra Python
             # instructions.
+
             self.java_position = next_java_position
 
     def process_bytecode(self, mnemonic, number_of_arguments, code, program):
@@ -631,10 +657,12 @@ class BytecodeReader:
                 arguments.append(ord(code[self.java_position + 1 + j]))
 
             # Call the handler.
+
             getattr(self, mnemonic)(arguments, program)
             return number_of_arguments
         else:
             # Call the handler.
+
             return getattr(self, mnemonic)(code[self.java_position+1:], program)
 
     java_bytecodes = {
@@ -1319,7 +1347,9 @@ class BytecodeTranslator(BytecodeReader):
         target = self.class_file.constants[index - 1]
         original_name = target.get_name()
         target_name = target.get_python_name()
+
         # Get the number of parameters from the descriptor.
+
         count = len(target.get_descriptor()[0])
 
         # The stack may contain one of the following patterns:
@@ -1333,15 +1363,18 @@ class BytecodeTranslator(BytecodeReader):
         # method != __init__, objectref != self -> should not occur
 
         # First, we build a tuple of the reference and arguments.
+
         program.build_tuple(count + 1)  # Stack: tuple
 
         # Then, we test the nature of the reference.
+
         program.dup_top()               # Stack: tuple, tuple
         program.load_const(0)           # Stack: tuple, tuple, 0
         program.binary_subscr()         # Stack: tuple, reference
         program.dup_top()               # Stack: tuple, reference, reference
 
         # Is it self?
+
         program.load_fast(0)            # Stack: tuple, reference, reference, self
         program.compare_op("is")        # Stack: tuple, reference, result
         program.jump_to_label(1, "is-self")
@@ -1349,6 +1382,7 @@ class BytecodeTranslator(BytecodeReader):
 
         # Is another class or reference.
         # NOTE: Reference case not covered!
+
         if str(original_name) == "<init>":
             program.rot_two()               # Stack: reference, tuple
             program.load_const(1)           # Stack: reference, tuple, 1
@@ -1529,15 +1563,21 @@ class BytecodeTranslator(BytecodeReader):
     lneg = ineg
 
     def lookupswitch(self, arguments, program):
+
         # Find the offset to the next 4 byte boundary in the code.
+
         d, r = divmod(self.java_position, 4)
         to_boundary = (4 - r) % 4
+
         # Get the pertinent arguments.
+
         arguments = arguments[to_boundary:]
         default = (arguments[0] << 24) + (arguments[1] << 16) + (arguments[2] << 8) + arguments[3]
         npairs = (arguments[4] << 24) + (arguments[5] << 16) + (arguments[6] << 8) + arguments[7]
+
         # Process the pairs.
         # NOTE: This is not the most optimal implementation.
+
         pair_index = 8
         for pair in range(0, npairs):
             match = ((arguments[pair_index] << 24) + (arguments[pair_index + 1] << 16) +
@@ -1559,7 +1599,9 @@ class BytecodeTranslator(BytecodeReader):
             program.pop_top()                                           # Stack: key
             # Update the index.
             pair_index += 8
+
         # Generate the default.
+
         java_absolute = self.java_position + default
         program.jump_absolute(self.position_mapping[java_absolute])
 
@@ -1680,23 +1722,33 @@ class BytecodeTranslator(BytecodeReader):
         program.rot_two()
 
     def tableswitch(self, arguments, program):
+
         # Find the offset to the next 4 byte boundary in the code.
+
         d, r = divmod(self.java_position, 4)
         to_boundary = (4 - r) % 4
+
         # Get the pertinent arguments.
+
         arguments = arguments[to_boundary:]
         default = (arguments[0] << 24) + (arguments[1] << 16) + (arguments[2] << 8) + arguments[3]
         low = (arguments[4] << 24) + (arguments[5] << 16) + (arguments[6] << 8) + arguments[7]
         high = (arguments[8] << 24) + (arguments[9] << 16) + (arguments[10] << 8) + arguments[11]
+
         # Process the jump entries.
         # NOTE: This is not the most optimal implementation.
+
         jump_index = 8
         for jump in range(low, high + 1):
             offset = signed4((arguments[jump_index] << 24) + (arguments[jump_index + 1] << 16) +
                 (arguments[jump_index + 2] << 8) + arguments[jump_index + 3])
+
             # Calculate the branch target.
+
             java_absolute = self.java_position + offset
+
             # Generate branching code.
+
             program.dup_top()                                           # Stack: key, key
             program.load_const(jump)                                    # Stack: key, key, jump
             program.compare_op("==")                                    # Stack: key, result
@@ -1704,12 +1756,18 @@ class BytecodeTranslator(BytecodeReader):
             program.pop_top()                                           # Stack: key
             program.pop_top()                                           # Stack:
             program.jump_absolute(self.position_mapping[java_absolute])
+
             # Generate the label for the end of the branching code.
+
             program.start_label("end")
             program.pop_top()                                           # Stack: key
+
             # Update the index.
+
             jump_index += 8
+
         # Generate the default.
+
         java_absolute = self.java_position + default
         program.jump_absolute(self.position_mapping[java_absolute])
 
@@ -1755,15 +1813,21 @@ class ClassTranslator:
 
         if method_name == "<init>":
             method_name = "__init__"
+
         # Where only one method exists, just make an alias.
+
         if len(methods) == 1:
             method, fn = methods[0]
             namespace[method_name] = fn
             return
+
         # Find the maximum number of parameters involved.
         #maximum = max([len(method.get_descriptor()[0]) for method in methods])
+
         program = BytecodeWriter()
+
         # NOTE: The code below should use dictionary-based dispatch for better performance.
+
         program.load_fast(1)                        # Stack: arguments
         for method, fn in methods:
             program.setup_loop()
@@ -1855,8 +1919,10 @@ class ClassTranslator:
             # Try the next method if arguments or parameters were missing or incorrect.
             program.start_label("failed")
             program.pop_top()                       # Stack: arguments
+
         # Raise an exception if nothing matched.
         # NOTE: Improve this.
+
         program.load_const("No matching method")
         program.raise_varargs(1)
         program.load_const(None)
@@ -1865,6 +1931,7 @@ class ClassTranslator:
         # Add the code as a method in the namespace.
         # NOTE: One actual parameter, flags as 71 apparently means that a list
         # NOTE: parameter is used in a method.
+
         nlocals = program.max_locals + 1
         code = new.code(1, nlocals, program.max_stack_depth, 71, program.get_output(),
             tuple(program.get_constants()), tuple(program.get_names()), tuple(self.make_varnames(nlocals)),
@@ -1885,22 +1952,32 @@ class ClassTranslator:
             nlocals = w.max_locals + 1
             nargs = len(method.get_descriptor()[0]) + 1
             method_name = str(method.get_python_name())
+
             # NOTE: Add line number table later.
+
             code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
                 tuple(self.make_varnames(nlocals)), self.filename, method_name, 0, "")
+
             # NOTE: May need more globals.
+
             fn = new.function(code, global_names)
             namespace[method_name] = fn
             real_method_name = str(method.get_name())
             if not real_methods.has_key(real_method_name):
                 real_methods[real_method_name] = []
             real_methods[real_method_name].append((method, fn))
+
         # Define superclasses.
+
         bases = self.get_base_classes(global_names)
+
         # Define method dispatchers.
+
         for real_method_name, methods in real_methods.items():
             self.make_method(real_method_name, methods, global_names, namespace)
+
         # Use only the last part of the fully qualified name.
+
         full_class_name = str(self.class_file.this_class.get_python_name())
         class_name = full_class_name.split(".")[-1]
         cls = new.classobj(class_name, bases, namespace)
