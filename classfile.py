@@ -166,7 +166,7 @@ class ItemInfo(NameUtils):
 
     def _get_array_type(self, s):
         if len(s) > 0:
-            return self._get_component_type(s[1:])
+            return self._get_component_type(s)
         else:
             return None, s
 
