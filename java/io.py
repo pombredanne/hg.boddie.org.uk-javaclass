@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-class InputStream(object):
+from java.lang._object import Object, NullPointerException, IndexOutOfBoundsException, Exception as _Exception
+
+class InputStream(Object):
     def __init__(self, stream):
         # NOTE: Python-only method.
         self.stream = stream
@@ -12,15 +14,13 @@ class InputStream(object):
             return ord(s)
     def read____B__array_(self, b, off=0, length=None):
         if b is None:
-            import java.lang
-            raise java.lang.NullPointerException
+            raise Exception, NullPointerException()
         if len(b) == 0:
             return 0
         if length is None:
             length = len(b)
         elif length + off > len(b):
-            import java.lang
-            raise java.lang.IndexOutOfBoundsException
+            raise Exception, IndexOutOfBoundsException()
         s = self.stream.read(length)
         if s == "":
             return -1
@@ -53,14 +53,14 @@ class InputStream(object):
         raise NotImplementedError, "markSupported"
     markSupported___ = markSupported
 
-class IOException(Exception):
+class IOException(_Exception):
     def __init__(self, *args):
         self.args = args
 
 setattr(IOException, "__init_____", IOException.__init__)
 setattr(IOException, "__init_____java__lang__String", IOException.__init__)
 
-class OutputStream(object):
+class OutputStream(Object):
     def write(self, b, *args):
         raise NotImplementedError, "write"
     write___java__lang__String = write
@@ -108,14 +108,14 @@ class PrintStream(FilterOutputStream):
     def flush(self):
         FilterOutputStream.flush(self)
     flush___ = flush
-    def print_(self, obj):
+    def print_(self, obj, ending=""):
         # NOTE: Check for arrays.
         if isinstance(obj, list):
             for i in obj:
-                self.print_(i)
+                self.print_(i, ending)
         else:
             # NOTE: Using Python string conversion.
-            FilterOutputStream.write(self, unicode(obj))
+            FilterOutputStream.write(self, unicode(obj) + ending)
     print____Z_ = print_
     print____C_ = print_
     print____C__array_ = print_
@@ -125,6 +125,18 @@ class PrintStream(FilterOutputStream):
     print____L_ = print_
     print___java__lang__Object = print_
     print___java__lang__String = print_
+
+    def println(self, obj):
+        self.print_(obj, "\n")
+    println____Z_ = println
+    println____C_ = println
+    println____C__array_ = println
+    println____D_ = println
+    println____F_ = println
+    println____I_ = println
+    println____L_ = println
+    println___java__lang__Object = println
+    println___java__lang__String = println
 
     # NOTE: To be completed.
 
