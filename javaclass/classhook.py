@@ -234,6 +234,7 @@ class ClassLoader(ihooks.ModuleLoader):
         find_module method produces such a list.
         """
 
+        #print "load_module", name
         module = self._not_java_module(name, stuff)
         if module is not None:
             return module
@@ -302,6 +303,7 @@ class ClassLoader(ihooks.ModuleLoader):
             for class_filename in self.hooks.matching(filename, os.extsep + "class", archive):
                 s = self.hooks.read(class_filename, archive)
                 class_file = classfile.ClassFile(s)
+                #print "Translating", str(class_file.this_class.get_name())
                 translator = bytecode.ClassTranslator(class_file)
                 external_names += translator.process(global_names)
 

@@ -862,9 +862,7 @@ class BytecodeReader:
         """
 
         if number_of_arguments is not None:
-            arguments = []
-            for j in range(0, number_of_arguments):
-                arguments.append(ord(code[self.java_position + 1 + j]))
+            arguments = [ord(b) for b in code[self.java_position + 1:self.java_position + 1 + number_of_arguments]]
 
             # Call the handler.
 
@@ -1101,8 +1099,8 @@ class BytecodeDisassembler(BytecodeReader):
         d, r = divmod(self.java_position + 1, 4)
         to_boundary = (4 - r) % 4
         code = code[to_boundary:]
-        default = classfile.u4(code[0:4])
-        npairs = classfile.u4(code[4:8])
+        default = classfile.s4(code[0:4])
+        npairs = classfile.s4(code[4:8])
         print default, npairs
         return to_boundary + 8 + npairs * 8
 
@@ -1111,9 +1109,9 @@ class BytecodeDisassembler(BytecodeReader):
         d, r = divmod(self.java_position + 1, 4)
         to_boundary = (4 - r) % 4
         code = code[to_boundary:]
-        default = classfile.u4(code[0:4])
-        low = classfile.u4(code[4:8])
-        high = classfile.u4(code[8:12])
+        default = classfile.s4(code[0:4])
+        low = classfile.s4(code[4:8])
+        high = classfile.s4(code[8:12])
         print default, low, high
         return to_boundary + 12 + (high - low + 1) * 4
 
@@ -1125,6 +1123,8 @@ class BytecodeDisassemblerProgram:
         print "(setup_finally %s)" % target
     def end_exception(self):
         print "(end_exception)"
+    def end_exceptions(self):
+        print "(end_exceptions)"
     def start_handler(self, exc_name, class_file):
         print "(start_handler %s)" % exc_name
     def pop_block(self):
@@ -1796,8 +1796,8 @@ class BytecodeTranslator(BytecodeReader):
         # Get the pertinent arguments.
 
         code = code[to_boundary:]
-        default = classfile.u4(code[0:4])
-        npairs = classfile.u4(code[4:8])
+        default = classfile.s4(code[0:4])
+        npairs = classfile.s4(code[4:8])
 
         # Process the pairs.
         # NOTE: This is not the most optimal implementation.
@@ -1820,7 +1820,7 @@ class BytecodeTranslator(BytecodeReader):
             program.start_label("end")
             program.pop_top()                                           # Stack: key
             # Update the index.
-            pair_index += 4
+            pair_index += 8
 
         # Generate the default.
 
@@ -2038,7 +2038,12 @@ class ClassTranslator:
 
         translator = BytecodeTranslator(self.class_file)
         writer = BytecodeWriter()
-        translator.process(method, writer)
+        try:
+            translator.process(method, writer)
+        except:
+            print "Translation error in", str(self.class_file.this_class.get_name()), str(method.get_name())
+            disassemble(self.class_file, method)
+            raise
         return translator, writer
 
     def make_method(self, real_method_name, methods, global_names):
