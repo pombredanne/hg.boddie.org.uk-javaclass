@@ -92,6 +92,13 @@ class Character(object):
         raise NotImplementedError, "compareTo"
 
 class String(object):
+
+    def init__empty(self):
+        self.value = u""
+
+    def init__String(self, obj):
+        self.value = obj.value
+
     def __init__(self, *args):
         # Python string initialisation:
         if len(args) == 1 and isinstance(args[0], str):
@@ -102,11 +109,11 @@ class String(object):
             return
         # __init__(self)
         elif len(args) == 0:
-            self.value = u""
+            self.__init__empty()
             return
         # __init__(self, original)
         elif len(args) == 1 and isinstance(args[0], String):
-            self.value = args[0].value
+            self.__init__String(args[0])
             return
         # __init__(self, value)
         # __init__(self, value, offset, count)
@@ -202,5 +209,8 @@ class String(object):
     copyValueOf = staticmethod(copyValueOf)
     def intern(self):
         raise NotImplementedError, "intern"
+
+setattr(String, "__init__$", String.init__empty)
+setattr(String, "__init__$java/lang/String", String.init__String)
 
 # vim: tabstop=4 expandtab shiftwidth=4
