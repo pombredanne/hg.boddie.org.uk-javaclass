@@ -29,4 +29,32 @@ public class DispatchTest {
     public void set(float b) {
         this.b = b;
     }
+
+    public int test(DispatchInterface obj) {
+        return obj.test();
+    }
+
+    public int test(DispatchClass1 obj) {
+        return obj.test();
+    }
+
+    public int testTest(DispatchInterface obj) {
+        return test(obj);
+    }
+}
+
+interface DispatchInterface {
+    public int test();
+}
+
+class DispatchClass1 implements DispatchInterface {
+    public int test() {
+        return 1;
+    }
+}
+
+class DispatchClass2 implements DispatchInterface {
+    public int test() {
+        return 2;
+    }
 }
