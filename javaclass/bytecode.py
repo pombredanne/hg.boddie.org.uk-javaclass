@@ -746,9 +746,35 @@ class BytecodeReader:
 
             # NOTE: Strange case with javac from JDK 1.4 but not JDK 1.3:
             # NOTE: start_pc == handler_pc
+            # Merge all finally handlers with the same handler location.
 
-            if exception.start_pc == exception.handler_pc:
-                continue
+            if exception.catch_type == 0 and exception_block_handler.get(exception.handler_pc, []) != []:
+
+                # Make a new definition.
+
+                new_exception = classfile.ExceptionInfo()
+                new_exception.catch_type = exception.catch_type
+                new_exception.handler_pc = exception.handler_pc
+                new_exception.end_pc = exception.end_pc
+                new_exception.start_pc = exception.start_pc
+
+                # Find the previous exception handler definition.
+ 
+                for previous_exception in exception_block_handler[exception.handler_pc][:]:
+                    if previous_exception.catch_type == 0:
+                        new_exception.end_pc = max(new_exception.end_pc, previous_exception.end_pc)
+                        new_exception.start_pc = min(new_exception.start_pc, previous_exception.start_pc)
+
+                        # Remove this exception from the lists.
+
+                        exception_block_handler[previous_exception.handler_pc].remove(previous_exception)
+                        exception_block_start[previous_exception.start_pc].remove(previous_exception)
+                        exception_block_end[previous_exception.end_pc].remove(previous_exception)
+                        break
+
+                # Use the new definition instead.
+
+                exception = new_exception
 
             # Index start positions.
 
