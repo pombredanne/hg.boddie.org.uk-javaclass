@@ -37,6 +37,9 @@ class BytecodeWriter:
         # A stack of exception block handler pointers.
         self.exception_handlers = []
 
+        # A list of exception offset details.
+        self.exception_offsets = []
+
         # A dictionary mapping labels to jump instructions referencing such labels.
         self.jumps = {}
 
@@ -294,10 +297,13 @@ class BytecodeWriter:
         current_exception_start = self.blocks.pop()
         # Convert the "lazy" absolute value.
         current_exception_target = self.exception_handlers.pop()
-        target = current_exception_target.get_value()
-        #print "*", current_exception_start, target
         # NOTE: Using 3 as the assumed length of the SETUP_* instruction.
-        self._rewrite_value(current_exception_start + 1, target - current_exception_start - 3)
+        self.exception_offsets.append((current_exception_start + 1, current_exception_target, current_exception_start))
+
+    def end_exceptions(self):
+        for position, exception_target, exception_start in self.exception_offsets:
+            #print "*", exception_start, exception_target.get_value()
+            self._rewrite_value(position, exception_target.get_value() - exception_start - 3)
 
     def start_handler(self, exc_name, class_file):
 
@@ -815,6 +821,10 @@ class BytecodeReader:
             # instructions.
 
             self.java_position = next_java_position
+
+        # Tidy up exceptions.
+
+        program.end_exceptions()
 
     def process_bytecode(self, mnemonic, number_of_arguments, code, program):
 
