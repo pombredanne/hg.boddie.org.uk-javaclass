@@ -32,7 +32,15 @@ def f8(data):
 
 # Useful mix-ins.
 
-class NameUtils:
+class PythonNameUtils:
+    def get_python_name(self):
+        name = self.get_name()
+        if str(name) == "<init>":
+            return "__init__"
+        else:
+            return name
+
+class NameUtils(PythonNameUtils):
     def get_name(self):
         if self.name_index != 0:
             return self.class_file.constants[self.name_index - 1]
@@ -40,7 +48,7 @@ class NameUtils:
             # Some name indexes are zero to indicate special conditions.
             return None
 
-class NameAndTypeUtils:
+class NameAndTypeUtils(PythonNameUtils):
     def get_name(self):
         if self.name_and_type_index != 0:
             return self.class_file.constants[self.name_and_type_index - 1].get_name()
