@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-class AccessControlContext(object):
+import java.lang
+
+class AccessControlContext(java.lang.Object):
     def __init__(self):
         # NOTE: Python-only method.
         self.acc = None
@@ -33,7 +35,7 @@ setattr(AccessControlContext, "__init_____java__security__AccessControlContext__
     AccessControlContext.init__acc_combiner)
 setattr(AccessControlContext, "__init_____java__security__ProtectionDomain_array_", AccessControlContext.init__context)
 
-class AccessController(object):
+class AccessController(java.lang.Object):
     def checkPermission(perm):
         # NOTE: Implement properly.
         pass
