@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
         full_name = c.this_class.get_python_name()
         class_name = full_name.split(".")[-1]
-        f.write("class %s(%s.%s):\n" % (class_name, package, class_name))
+        f.write("class %s(%s.%s, object):\n" % (class_name, package, class_name))
 
         # Process methods in the class, writing wrapper code.
 
