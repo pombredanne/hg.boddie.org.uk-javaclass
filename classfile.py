@@ -36,7 +36,7 @@ class PythonNameUtils:
     def get_python_name(self):
         name = self.get_name()
         if str(name) == "<init>":
-            return "__java_init__"
+            return "__init__"
         else:
             return name
 
