@@ -153,13 +153,14 @@ class ClassLoader(ihooks.ModuleLoader):
             translator = bytecode.ClassTranslator(class_file)
             cls = translator.process(global_names)
             module.__dict__[cls.__name__] = cls
-            classes.append(cls)
+            classes.append((cls, class_file))
 
         # Finally, call __clinit__ methods for all relevant classes.
 
-        for cls in classes:
-            if hasattr(cls, "__clinit__"):
-                cls.__clinit__()
+        for cls, class_file in classes:
+            if not classfile.has_flags(class_file.access_flags, [classfile.ABSTRACT]):
+                if hasattr(cls, "__clinit__"):
+                    cls.__clinit__()
 
         return module
 
