@@ -92,11 +92,16 @@ class ClassLoader(ihooks.ModuleLoader):
 
         global_names = {}
         global_names.update(__builtins__.__dict__)
+
+        # Set up the module.
+
         module = self.hooks.add_module(name)
+        module.__path__ = [filename]
 
         # Process each class file, producing a genuine Python class.
 
         class_files = []
+        classes = []
         for class_filename in glob.glob(os.path.join(filename, "*" + os.extsep + "class")):
             print "Importing class", class_filename
             f = open(class_filename, "rb")
@@ -106,8 +111,14 @@ class ClassLoader(ihooks.ModuleLoader):
             translator = bytecode.ClassTranslator(class_file)
             cls = translator.process(global_names)
             module.__dict__[cls.__name__] = cls
+            classes.append(cls)
 
-        module.__path__ = [filename]
+        # Finally, call __clinit__ methods for all relevant classes.
+
+        #for cls in classes:
+        #    if hasattr(cls, "__clinit__"):
+        #        cls.__clinit__()
+
         return module
 
 importer = ihooks.ModuleImporter(loader=ClassLoader(hooks=ClassHooks()))
