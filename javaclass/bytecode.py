@@ -658,6 +658,21 @@ def load_class_name(class_file, full_class_name, program):
     else:
         program.load_global(class_parts[-1])
 
+atypes_to_default_values = {
+    4 : 0,      # bool (NOTE: Should be False.)
+    5 : u"",    # char
+    6 : 0.0,    # float
+    7 : 0.0,    # double
+    8 : 0,      # byte
+    9 : 0,      # short
+    10: 0,      # int
+    11: 0       # long
+}
+
+def get_default_for_atype(atype):
+    global atypes_to_default_values
+    return atypes_to_default_values.get(atype)
+
 # Bytecode conversion.
 
 class BytecodeReader:
@@ -1101,28 +1116,30 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Does not raise NegativeArraySizeException.
         # NOTE: Not using the index to type the list/array.
         index = (arguments[0] << 8) + arguments[1]
-        self._newarray(program)
+        type_name = self.class_file.constants[index - 1].get_python_name()
+        default_value = classfile.get_default_for_type(type_name)
+        self._newarray(program, type_name)
 
-    def _newarray(self, program):
-        program.build_list(0)       # Stack: count, list
-        program.rot_two()           # Stack: list, count
+    def _newarray(self, program, default_value):
+        program.build_list(0)               # Stack: count, list
+        program.rot_two()                   # Stack: list, count
         program.setup_loop()
         program.load_global("range")
-        program.load_const(0)       # Stack: list, count, range, 0
-        program.rot_three()         # Stack: list, 0, count, range
-        program.rot_three()         # Stack: list, range, 0, count
-        program.call_function(2)    # Stack: list, range_list
-        program.get_iter()          # Stack: list, iter
-        program.for_iter()          # Stack: list, iter, value
-        program.pop_top()           # Stack: list, iter
-        program.rot_two()           # Stack: iter, list
-        program.dup_top()           # Stack: iter, list, list
-        program.load_attr("append") # Stack: iter, list, append
-        program.load_const(None)    # Stack: iter, list, append, None
-        program.call_function(1)    # Stack: iter, list, None
-        program.pop_top()           # Stack: iter, list
-        program.rot_two()           # Stack: list, iter
-        program.end_loop()          # Back to for_iter above
+        program.load_const(0)               # Stack: list, count, range, 0
+        program.rot_three()                 # Stack: list, 0, count, range
+        program.rot_three()                 # Stack: list, range, 0, count
+        program.call_function(2)            # Stack: list, range_list
+        program.get_iter()                  # Stack: list, iter
+        program.for_iter()                  # Stack: list, iter, value
+        program.pop_top()                   # Stack: list, iter
+        program.rot_two()                   # Stack: iter, list
+        program.dup_top()                   # Stack: iter, list, list
+        program.load_attr("append")         # Stack: iter, list, append
+        program.load_const(default_value)   # Stack: iter, list, append, default
+        program.call_function(1)            # Stack: iter, list, default
+        program.pop_top()                   # Stack: iter, list
+        program.rot_two()                   # Stack: list, iter
+        program.end_loop()                  # Back to for_iter above
 
     def areturn(self, arguments, program):
         program.return_value()
@@ -1783,7 +1800,9 @@ class BytecodeTranslator(BytecodeReader):
         index = (arguments[0] << 8) + arguments[1]
         dimensions = arguments[2]
         # Stack: count1, ..., countN-1, countN
-        self._newarray(program)             # Stack: count1, ..., countN-1, list
+        type_name = self.class_file.constants[index - 1].get_python_name()
+        default_value = classfile.get_default_for_type(type_name)
+        self._newarray(program, default_value)  # Stack: count1, ..., countN-1, list
         for dimension in range(1, dimensions):
             program.rot_two()               # Stack: count1, ..., list, countN-1
             program.build_list(0)           # Stack: count1, ..., list, countN-1, new-list
@@ -1830,8 +1849,10 @@ class BytecodeTranslator(BytecodeReader):
 
     def newarray(self, arguments, program):
         # NOTE: Does not raise NegativeArraySizeException.
-        # NOTE: Not using the arguments to type the list/array.
-        self._newarray(program)
+        # NOTE: Not completely using the arguments to type the list/array.
+        atype = arguments[0]
+        default_value = get_default_for_atype(atype)
+        self._newarray(program, default_value)
 
     def nop(self, arguments, program):
         pass

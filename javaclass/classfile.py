@@ -48,6 +48,19 @@ descriptor_base_type_mapping = {
     "[" : "list"
     }
 
+type_names_to_default_values = {
+    "int" : 0,
+    "str" : u"",
+    "float" : 0.0,
+    "object" : None,
+    "bool" : 0, # NOTE: Should be False.
+    "list" : []
+    }
+
+def get_default_for_type(type_name):
+    global type_names_to_default_values
+    return type_names_to_default_values.get(type_name)
+
 PUBLIC, PRIVATE, PROTECTED, STATIC, FINAL,  SUPER,  SYNCHRONIZED, VOLATILE, TRANSIENT, NATIVE, INTERFACE, ABSTRACT, STRICT = \
 0x0001, 0x0002,  0x0004,    0x0008, 0x0010, 0x0020, 0x0020,       0x0040,   0x0080,    0x0100, 0x0200,    0x0400,   0x0800
 
