@@ -1351,8 +1351,10 @@ class BytecodeTranslator(BytecodeReader):
         program.start_label("is-self")
         program.pop_top()               # Stack: tuple, reference
         program.pop_top()               # Stack: tuple
-        program.load_global(str(self.class_file.this_class.get_python_name()))
-                                        # Stack: tuple, classref
+        # Get the class name instead of the fully qualified name.
+        full_class_name = str(self.class_file.this_class.get_python_name())
+        class_name = full_class_name.split(".")[-1]
+        program.load_global(class_name) # Stack: tuple, classref
         program.load_attr("__bases__")  # Stack: tuple, bases
         program.dup_top()               # Stack: tuple, bases, bases
         program.load_global("len")      # Stack: tuple, bases, bases, len
@@ -1373,41 +1375,6 @@ class BytecodeTranslator(BytecodeReader):
         program.pop_top()               # Stack: tuple
         program.pop_top()               # Stack:
         program.start_label("done")
-
-    """
-    def invokespecial(self, arguments, program):
-        # NOTE: This implementation does not perform the necessary checks for
-        # NOTE: signature-based polymorphism.
-        # NOTE: Java rules not specifically obeyed.
-        index = (arguments[0] << 8) + arguments[1]
-        target = self.class_file.constants[index - 1]
-        target_name = target.get_python_name()
-        # Get the number of parameters from the descriptor.
-        count = len(target.get_descriptor()[0])
-        # Stack: objectref, arg1, arg2, ...
-        program.build_tuple(count + 1)  # Stack: tuple
-        # Use the class to provide access to static methods.
-        program.load_name("self")       # Stack: tuple, self
-        program.load_attr("__class__")  # Stack: tuple, class
-        program.load_attr("__bases__")  # Stack: tuple, base-classes
-        program.dup_top()               # Stack: tuple, base-classes, base-classes
-        program.load_global("len")      # Stack: tuple, base-classes, base-classes, len
-        program.rot_two()               # Stack: tuple, base-classes, len, base-classes
-        program.call_function(1)        # Stack: tuple, base-classes, count
-        program.load_const(0)           # Stack: tuple, base-classes, count, 0
-        program.compare_op("==")        # Stack: tuple, base-classes, result
-        program.jump_to_label(1, "next")
-        program.pop_top()               # Stack: tuple, base-classes
-        program.load_const(0)           # Stack: tuple, base-classes, 0
-        program.binary_subscr()         # Stack: tuple, superclass
-        self._invoke(target_name, program)
-        program.jump_to_label(None, "next2")
-        program.start_label("next")
-        program.pop_top()               # Stack: tuple, base-classes
-        program.pop_top()               # Stack: tuple
-        program.pop_top()               # Stack:
-        program.start_label("next2")
-    """
 
     def invokestatic(self, arguments, program):
         # NOTE: This implementation does not perform the necessary checks for
@@ -1706,17 +1673,37 @@ def disassemble(class_file, method):
     disassembler.process(method, BytecodeDisassemblerProgram())
 
 class ClassTranslator:
+
+    """
+    A class which provides a wrapper around a class file and the means to
+    translate the represented class into a Python class.
+    """
+
     def __init__(self, class_file):
+
+        "Initialise the object with the given 'class_file'."
+
         self.class_file = class_file
         self.filename = str(self.class_file.attributes[0].get_name())
 
     def translate_method(self, method):
+
+        "Translate the given 'method' - an object obtained from the class file."
+
         translator = BytecodeTranslator(self.class_file)
         writer = BytecodeWriter()
         translator.process(method, writer)
         return translator, writer
 
     def make_method(self, method_name, methods, global_names, namespace):
+
+        """
+        Make a dispatcher method with the given 'method_name', providing
+        dispatch to the supplied type-sensitive 'methods', accessing the given
+        'global_names' where necessary, and storing the new method in the
+        'namespace' provided.
+        """
+
         if method_name == "<init>":
             method_name = "__init__"
         # Where only one method exists, just make an alias.
@@ -1838,6 +1825,11 @@ class ClassTranslator:
         namespace[method_name] = fn
 
     def process(self, global_names):
+
+        """
+        Process the class, storing it in the 'global_names' dictionary provided.
+        """
+
         namespace = {}
         real_methods = {}
         for method in self.class_file.methods:
@@ -1863,11 +1855,21 @@ class ClassTranslator:
         # Define method dispatchers.
         for real_method_name, methods in real_methods.items():
             self.make_method(real_method_name, methods, global_names, namespace)
-        cls = new.classobj(str(self.class_file.this_class.get_python_name()), bases, namespace)
+        # Use only the last part of the fully qualified name.
+        full_class_name = str(self.class_file.this_class.get_python_name())
+        class_name = full_class_name.split(".")[-1]
+        cls = new.classobj(class_name, bases, namespace)
         global_names[cls.__name__] = cls
         return cls
 
     def make_varnames(self, nlocals):
+
+        """
+        A utility method which invents variable names for the given number -
+        'nlocals' - of local variables in a method. Returns a list of such
+        variable names.
+        """
+
         l = ["self"]
         for i in range(1, nlocals):
             l.append("_l%s" % i)
