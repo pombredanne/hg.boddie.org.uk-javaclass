@@ -6,15 +6,22 @@ Installation
 
 Usually, I issue this command first:
 
-python setup.py build
+  python setup.py build
 
 The following should, in any case, be sufficient:
 
-python setup.py install
+  python setup.py install
 
 I don't think distutils supports uninstall, but the installation just adds the
 java and javaclass packages to your site-packages directory and the
 runclass.py program to the same bin directory that python resides in.
+
+Testing
+-------
+
+It should be possible to just run the test.py program and see the results:
+
+  python test.py
 
 Class Search Paths
 ------------------
