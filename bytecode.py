@@ -227,15 +227,32 @@ class BytecodeWriter:
 
         # Where handlers are begun, produce bytecode to test the type of
         # the exception.
+        # NOTE: Since RAISE_VARARGS and END_FINALLY are not really documented,
+        # NOTE: we store the top of the stack and use it later to trigger the
+        # NOTE: magic processes when re-raising.
 
-        self.dup_top()                      # Stack: exception, exception
-        self.load_global(str(exc_name))     # Stack: exception, exception, handled-exception
-        self.compare_op("exception match")  # Stack: exception, result
+        self.rot_two()                      # Stack: raised-exception, exception
+        self.dup_top()                      # Stack: raised-exception, exception, exception
+        # Handled exceptions are wrapped before being thrown.
+        self.load_global("Exception")       # Stack: raised-exception, exception, exception, Exception
+        self.compare_op("exception match")  # Stack: raised-exception, exception, result
+        self.jump_to_label(0, "next")
+        self.pop_top()                      # Stack: raised-exception, exception
+        self.dup_top()                      # Stack: raised-exception, exception, exception
+        self.load_attr("args")              # Stack: raised-exception, exception, args
+        self.load_const(0)                  # Stack: raised-exception, exception, args, 0
+        self.binary_subscr()                # Stack: raised-exception, exception, exception-object
+        self.load_global(str(exc_name))     # Stack: raised-exception, exception, exception-object, handled-exception
+        self.load_global("isinstance")      # Stack: raised-exception, exception, exception-object, handled-exception, isinstance
+        self.rot_three()                    # Stack: raised-exception, exception, isinstance, exception-object, handled-exception
+        self.call_function(2)               # Stack: raised-exception, exception, result
         self.jump_to_label(1, "handler")
-        self.pop_top()
+        self.start_label("next")
+        self.pop_top()                      # Stack: raised-exception, exception
+        self.rot_two()                      # Stack: exception, raised-exception
         self.end_finally()
         self.start_label("handler")
-        self.pop_top()
+        self.pop_top()                      # Stack: raised-exception, exception
 
     # Complicated methods.
 
@@ -483,6 +500,12 @@ class BytecodeWriter:
         self.output.append(opmap["UNPACK_SEQUENCE"])
         self.position += 1
         self._write_value(count)
+
+    # Debugging.
+
+    def print_item(self):
+        self.output.append(opmap["PRINT_ITEM"])
+        self.position += 1
 
 # Utility classes and functions.
 
@@ -1014,8 +1037,12 @@ class BytecodeTranslator(BytecodeReader):
         if self.in_finally:
             program.end_finally()
         else:
-            program.dup_top()
+            # Wrap the exception in a Python exception.
+            program.load_global("Exception")    # Stack: objectref, Exception
+            program.rot_two()                   # Stack: Exception, objectref
+            program.call_function(1)            # Stack: exception
             program.raise_varargs(1)
+            # NOTE: This seems to put another object on the stack.
 
     baload = aaload
     bastore = aastore
@@ -1384,7 +1411,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Do proper resolution of classes,
         # NOTE: Not bothering with Object initialisation.
         full_class_name = target.get_class().get_python_name()
-        if full_class_name != "java.lang.Object":
+        if full_class_name not in ("java.lang.Object", "java.lang.Exception"):
             class_name = full_class_name.split(".")[-1]
             program.load_global(class_name) # Stack: tuple, classref
             self._invoke(target_name, program)
@@ -1407,7 +1434,7 @@ class BytecodeTranslator(BytecodeReader):
         # Get the class name instead of the fully qualified name.
         # NOTE: Do proper resolution of classes,
         full_class_name = target.get_class().get_python_name()
-        if full_class_name != "java.lang.Object":
+        if full_class_name not in ("java.lang.Object", "java.lang.Exception"):
             class_name = full_class_name.split(".")[-1]
             program.load_global(class_name) # Stack: tuple, classref
             self._invoke(target_name, program)
