@@ -420,6 +420,11 @@ class BytecodeWriter:
         self.position += 1
         self.update_stack_depth(-1)
 
+    def store_subscr(self):
+        self.output.append(opmap["STORE_SUBSCR"])
+        self.position += 1
+        self.update_stack_depth(-3)
+
     def unary_negative(self):
         self.output.append(opmap["UNARY_NEGATIVE"])
         self.position += 1
@@ -535,11 +540,14 @@ class BytecodeReader:
         self.in_finally = 0
         self.method = method
 
-        # NOTE: Not guaranteed.
-        if len(method.attributes) == 0:
+        # NOTE: Potentially unreliable way of getting necessary information.
+        code, exception_table = None, None
+        for attribute in method.attributes:
+            if isinstance(attribute, classfile.CodeAttributeInfo):
+                code, exception_table = attribute.code, attribute.exception_table
+                break
+        if code is None:
             return
-        attribute = method.attributes[0]
-        code, exception_table = attribute.code, attribute.exception_table
 
         # Produce a structure which permits fast access to exception details.
         exception_block_start = {}
@@ -1847,11 +1855,8 @@ class ClassTranslator:
             if not real_methods.has_key(real_method_name):
                 real_methods[real_method_name] = []
             real_methods[real_method_name].append((method, fn))
-        # NOTE: Define superclasses properly.
-        if str(self.class_file.super_class.get_name()) not in ("java/lang/Object", "java/lang/Exception"):
-            bases = (global_names[str(self.class_file.super_class.get_python_name())],)
-        else:
-            bases = ()
+        # Define superclasses.
+        bases = self.get_base_classes(global_names)
         # Define method dispatchers.
         for real_method_name, methods in real_methods.items():
             self.make_method(real_method_name, methods, global_names, namespace)
@@ -1861,6 +1866,30 @@ class ClassTranslator:
         cls = new.classobj(class_name, bases, namespace)
         global_names[cls.__name__] = cls
         return cls
+
+    def get_base_classes(self, global_names):
+
+        """
+        Identify the superclass, then either load it from the given
+        'global_names' if available, or import the class from its parent module.
+        Return a tuple containing all base classes (typically a single element
+        tuple).
+        """
+
+        original_name = str(self.class_file.super_class.get_name())
+        if original_name in ("java/lang/Object", "java/lang/Exception"):
+            return ()
+        else:
+            full_class_name = str(self.class_file.super_class.get_python_name())
+            class_name_parts = full_class_name.split(".")
+            class_module_name = ".".join(class_name_parts[:-1])
+            if class_module_name == "":
+                class_module_name = "__this__"
+            class_name = class_name_parts[-1]
+            print "*", class_module_name, class_name
+            class_module = __import__(class_module_name, global_names, {}, [class_name])
+            base = getattr(class_module, class_name)
+            return (base,)
 
     def make_varnames(self, nlocals):
 
