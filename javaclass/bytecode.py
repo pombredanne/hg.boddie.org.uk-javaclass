@@ -8,11 +8,10 @@ NOTE: Synchronized constructs are not actually supported.
 """
 
 import classfile
-from dis import cmp_op # for access to Python bytecode values and operators
+from dis import cmp_op, opname # for access to Python bytecode values and operators
 try:
     from dis import opmap
 except ImportError:
-    from dis import opname
     opmap = {}
     for i in range(0, len(opname)):
         opmap[opname[i]] = i
@@ -70,9 +69,9 @@ class BytecodeWriter:
         # A list of external names.
         self.external_names = []
 
-    def get_output(self):
+    def get_bytecodes(self):
 
-        "Return the output of the writer as a string."
+        "Return the list of bytecodes written to the writer."
 
         output = []
         for element in self.output:
@@ -80,6 +79,15 @@ class BytecodeWriter:
                 value = element.value
             else:
                 value = element
+            output.append(value)
+        return output
+
+    def get_output(self):
+
+        "Return the output of the writer as a string."
+
+        output = []
+        for value in self.get_bytecodes():
             # NOTE: ValueError gets raised for bad values here.
             output.append(chr(value))
         return "".join(output)
@@ -730,6 +738,12 @@ class BytecodeReader:
 
         for exception in reversed_exception_table:
 
+            # NOTE: Strange case with javac from JDK 1.4 but not JDK 1.3:
+            # NOTE: start_pc == handler_pc
+
+            if exception.start_pc == exception.handler_pc:
+                continue
+
             # Index start positions.
 
             if not exception_block_start.has_key(exception.start_pc):
@@ -1079,6 +1093,10 @@ class BytecodeDisassemblerProgram:
         print "(start_handler %s)" % exc_name
     def pop_block(self):
         print "(pop_block)"
+    def load_const(self, const):
+        print "(load_const %s)" % const
+    def return_value(self):
+        print "(return_value)"
 
 class BytecodeTranslator(BytecodeReader):
 
@@ -1958,6 +1976,7 @@ class BytecodeTranslator(BytecodeReader):
 def disassemble(class_file, method):
     disassembler = BytecodeDisassembler(class_file)
     disassembler.process(method, BytecodeDisassemblerProgram())
+    return disassembler
 
 class ClassTranslator:
 
