@@ -1,17 +1,19 @@
 #!/usr/bin/env python
 
+import java.lang
+
 # Interfaces.
 
-class Collection(object):
+class Collection(java.lang.Object):
     pass
 
-class Iterator(object):
+class Iterator(java.lang.Object):
     pass
 
-class List(object):
+class List(java.lang.Object):
     pass
 
-class Map(object):
+class Map(java.lang.Object):
     pass
 
 class Set(Collection):
@@ -22,12 +24,12 @@ class Set(Collection):
 class AbstractMap(Map):
     pass
 
-class Dictionary(object):
+class Dictionary(java.lang.Object):
     pass
 
 # Exceptions.
 
-class NoSuchElementException(object):
+class NoSuchElementException(java.lang.Exception):
     pass
 
 # Special Python classes.
@@ -57,7 +59,7 @@ class _Iterator(Iterator):
 
 # Classes.
 
-class EventObject(object):
+class EventObject(java.lang.Object):
     def __init__(self, source):
         self.source = source
     def getSource(self):
@@ -127,7 +129,7 @@ class HashSet(Set):
 
 setattr(HashSet, "__init_____", HashSet.__init__)
 
-class ResourceBundle(object):
+class ResourceBundle(java.lang.Object):
     def __init__(self, *args):
         # NOTE: To be implemented.
         pass
