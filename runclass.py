@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"Run class files."
+"A program to run Java class files."
 
 import classhook
 

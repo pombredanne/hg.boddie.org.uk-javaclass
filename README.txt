@@ -1,61 +1,88 @@
-Importing Java Classes and Libraries
-------------------------------------
+Class Search Paths
+------------------
+
+Java classes belonging to packages are located using sys.path or PYTHONPATH
+in the same way that they would be located using the Java classpath (or
+CLASSPATH environment variable). Thus, the rules for locating package
+classes are as follows:
+
+ * Classes residing within plain directories which represent a package
+   hierarchy can be accessed by putting the parent directory of the top of
+   the package hierarchy on the PYTHONPATH (or sys.path). For example, a
+   package called mypackage, represented by a directory of the same name at
+   /home/java/classes/mypackage, would be made accessible by adding the
+   /home/java/classes directory to the PYTHONPATH.
+
+ * Classes residing within .jar files can be accessed by putting the path to
+   each .jar file on the PYTHONPATH. For example, a package called
+   mypackage, represented by a file located at /home/java/lib/mypackage.jar,
+   would be made accessible by adding the /home/java/lib/mypackage.jar file
+   to the PYTHONPATH.
+
+Note that classes not belonging to a package cannot be accessed via such
+search paths and are made available using a special module (see "Non-package
+Classes" below).
+
+Importing Classes
+-----------------
 
 The classhook.py import hook needs to be made available before imports from
 Java classes and libraries (.jar files) can take place. This can be done
 by either...
 
-  1. Running the classhook.py file directly and then using the interactive
-     interpreter:
+  * Running the classhook.py file directly and then using the interactive
+    interpreter:
 
-     python -i classhook.py
+    python -i classhook.py
 
-  2. Putting classhook.py in sys.path or PYTHONPATH and importing the
-     classhook module before any code importing Java classes and packages.
+  * Putting classhook.py in sys.path or PYTHONPATH and importing the
+    classhook module before any code importing Java classes and packages.
 
-Java classes are located using sys.path or PYTHONPATH in the same way that
-they would be located using the Java classpath (or CLASSPATH environment
-variable).
+Importing Non-package Classes
+-----------------------------
 
-  * Directories representing packages and containing Java class files must
-    reside within directories specified on the PYTHONPATH. For example, the
-    directory mypackage residing within /home/paulb/java would be used as
-    follows:
+Classes which do not belong to a package are only accessible when residing
+in the current working directory of any program attempting to use them. Such
+classes will not be made available automatically, but must be imported from
+a special module called __this__.
 
-    PYTHONPATH=/home/paulb/java python -i classhook.py
+ * Usage of the "import __this__" statement will cause all classes in the
+   current directory to be made available within the __this__ module.
 
-    And within Python:
+ * Usage of the "from __this__ import" construct will cause all classes in
+   the current directory to be processsed, but only named classes will be
+   made available in the global namespace unless "*" was specified (which
+   will, as usual, result in all such classes being made available).
 
-    import mypackage
+Running Java Classes
+--------------------
 
-    Note that the classes within the directory should be assigned to the
-    package mypackage.
+Java classes with a public, static main method can be run directly using the
+runclass.py program.
 
-  * Free-standing Java class files must reside in the current directory.
-    For example, a collection of class files in /home/paulb/classes would be
-    used as follows:
+  * Free-standing classes (ie. not belonging to packages) can be run from
+    the directory in which they reside. For example, suitable classes in the
+    tests directory would be run as follows:
 
-    cd /home/paulb/classes
-    python -i /home/paulb/python/classhook.py
+    cd tests
+    python ../runclass.py MainTest hello world
 
-    And within Python:
+    If runclass.py is executable and on the PATH, then the following can be
+    used instead:
 
-    import __this__
+    cd tests
+    runclass.py MainTest hello world
 
-    Note that such free-standing classes should not be assigned to any
-    package and must therefore appear within the special package __this__
-    and be imported under such special conditions.
+  * Classes residing in packages can be run by ensuring that the packages
+    are registered on the PYTHONPATH (see "Class Search Paths" above). Then,
+    the testpackage.MainTest class (for example) would be run as follows:
 
-  * Libraries contained within .jar files must be specified directly on the
-    PYTHONPATH as if they were directories containing package hierarchies.
-    For example, the library archive.jar, residing within /home/paulb/java
-    and containing the package mypackage, would be used as follows:
+    python runclass.py testpackage.MainTest hello world
 
-    PYTHONPATH=/home/paulb/java/archive.jar python -i classhook.py
+    If runclass.py is executable and on the PATH, then the following can be
+    used instead:
 
-    And within Python:
-
-    import mypackage
+    runclass.py testpackage.MainTest hello world
 
 Accessing Python Libraries from Java
 ------------------------------------
@@ -89,8 +116,9 @@ about the Python libraries.
      processed directory.
 
   4. The Java classes which use the wrapped Python libraries can now be
-     imported and used as described above. The wrapper package needs to
-     reside in sys.path or PYTHONPATH, as must the wrapped library.
+     imported and used as described above. The wrapper package (qtjava in
+     the above example) needs to reside in sys.path or PYTHONPATH, as must
+     the wrapped library (qt in the above example).
 
 Issues
 ------
