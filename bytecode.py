@@ -9,6 +9,7 @@ NOTE: Synchronized constructs are not actually supported.
 
 from dis import opmap, cmp_op # for access to Python bytecode values and operators
 from UserDict import UserDict
+import new
 
 # Bytecode production classes.
 
@@ -1266,6 +1267,7 @@ class BytecodeTranslator(BytecodeReader):
         # NOTE: Java rules not specifically obeyed.
         index = (arguments[0] << 8) + arguments[1]
         target = self.class_file.constants[index - 1]
+        original_name = target.get_name()
         target_name = target.get_python_name()
         # Get the number of parameters from the descriptor.
         count = len(target.get_descriptor()[0])
@@ -1297,7 +1299,7 @@ class BytecodeTranslator(BytecodeReader):
 
         # Is another class or reference.
         # NOTE: Reference case not covered!
-        if str(target_name) == "__init__":
+        if str(original_name) == "<init>":
             program.rot_two()               # Stack: reference, tuple
             program.load_const(1)           # Stack: reference, tuple, 1
             program.slice_1()               # Stack: reference, tuple[1:]
@@ -1671,11 +1673,66 @@ def disassemble(class_file, method):
     disassembler = BytecodeDisassembler(class_file)
     disassembler.process(method, BytecodeDisassemblerProgram())
 
-def translate(class_file, method):
-    translator = BytecodeTranslator(class_file)
-    writer = BytecodeWriter()
-    translator.process(method, writer)
-    return translator, writer
+class ClassTranslator:
+    def __init__(self, class_file):
+        self.class_file = class_file
+        self.filename = str(self.class_file.attributes[0].get_name())
+
+    def translate_method(self, method):
+        translator = BytecodeTranslator(self.class_file)
+        writer = BytecodeWriter()
+        translator.process(method, writer)
+        return translator, writer
+
+    def make_method(self, method_name, methods, namespace):
+        if method_name == "<init>":
+            method_name = "__init__"
+        # Where only one method exists, just make an alias.
+        if len(methods) == 1:
+            method, fn = methods[0]
+            namespace[method_name] = fn
+            return
+        return # for now
+        # Find the maximum number of parameters involved.
+        #maximum = max([len(method.get_descriptor()[0]) for method in methods])
+        #program = BytecodeWriter()
+        # NOTE: The code below should use dictionary-based dispatch for better performance.
+        #for method in methods:
+        #    program.load_fast(1)    # Stack: arguments
+        #    program.get_iter()      # Stack: arguments, iter
+        #    program.for_iter()      # Stack: arguments, iter, argument
+        #    program.dup_top()       # Stack: arguments, iter, argument, argument
+        #    for parameter in method.get_descriptor()[0]:
+
+    def process(self, global_names):
+        namespace = {}
+        real_methods = {}
+        for method in self.class_file.methods:
+            t, w = self.translate_method(method)
+            nlocals = w.max_locals + 1
+            nargs = len(method.get_descriptor()[0]) + 1
+            method_name = str(method.get_python_name())
+            # NOTE: Add line number table later.
+            code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
+                tuple(make_varnames(nlocals)), self.filename, method_name, 0, "")
+            # NOTE: May need more globals.
+            fn = new.function(code, global_names)
+            namespace[method_name] = fn
+            real_method_name = str(method.get_name())
+            if not real_methods.has_key(real_method_name):
+                real_methods[real_method_name] = []
+            real_methods[real_method_name].append((method, fn))
+        # NOTE: Define superclasses properly.
+        if str(self.class_file.super_class.get_name()) not in ("java/lang/Object", "java/lang/Exception"):
+            bases = (global_names[str(self.class_file.super_class.get_python_name())],)
+        else:
+            bases = ()
+        # Define method dispatchers.
+        for real_method_name, methods in real_methods.items():
+            self.make_method(real_method_name, methods, namespace)
+        cls = new.classobj(str(self.class_file.this_class.get_python_name()), bases, namespace)
+        global_names[cls.__name__] = cls
+        return cls
 
 def make_varnames(nlocals):
     l = ["self"]
@@ -1686,30 +1743,13 @@ def make_varnames(nlocals):
 if __name__ == "__main__":
     import sys
     from classfile import ClassFile
+    import dis
     global_names = {}
     global_names.update(__builtins__.__dict__)
     for filename in sys.argv[1:]:
         f = open(filename, "rb")
         c = ClassFile(f.read())
-        import dis, new
-        namespace = {}
-        for method in c.methods:
-            nargs = len(method.get_descriptor()[0]) + 1
-            t, w = translate(c, method)
-            nlocals = w.max_locals + 1
-            filename = str(c.attributes[0].get_name())
-            method_name = str(method.get_python_name())
-            code = new.code(nargs, nlocals, w.max_stack_depth, 67, w.get_output(), tuple(w.get_constants()), tuple(w.get_names()),
-                tuple(make_varnames(nlocals)), filename, method_name, 0, "")
-            # NOTE: May need more globals.
-            fn = new.function(code, global_names)
-            namespace[method_name] = fn
-        # NOTE: Define superclasses properly.
-        if str(c.super_class.get_name()) not in ("java/lang/Object", "java/lang/Exception"):
-            bases = (global_names[str(c.super_class.get_python_name())],)
-        else:
-            bases = ()
-        cls = new.classobj(str(c.this_class.get_python_name()), bases, namespace)
-        global_names[cls.__name__] = cls
+        translator = ClassTranslator(c)
+        cls = translator.process(global_names)
 
 # vim: tabstop=4 expandtab shiftwidth=4
