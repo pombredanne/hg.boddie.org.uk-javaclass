@@ -11,4 +11,8 @@ public class StringTest {
     public StringTest(String newString) {
         s = newString;
     }
+
+    public StringTest(String firstString, String secondString) {
+        s = firstString + secondString;
+    }
 }
