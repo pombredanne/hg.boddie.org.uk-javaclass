@@ -317,7 +317,7 @@ class ClassLoader(ihooks.ModuleLoader):
             class_file_init = {}
 
             for class_name in class_file_index:
-                print "* Class", class_name
+                #print "* Class", class_name
                 class_file = class_files[class_name]
                 translator = bytecode.ClassTranslator(class_file)
                 cls, external_names = translator.process(global_names)
@@ -329,7 +329,7 @@ class ClassLoader(ihooks.ModuleLoader):
                 this_class_module, this_class_name = this_class_name_parts[:-1], this_class_name_parts[-1]
 
                 for external_name in external_names:
-                    print "* Name", external_name
+                    #print "* Name", external_name
                     external_name_parts = external_name.split(".")
                     external_class_module, external_class_name = external_name_parts[:-1], external_name_parts[-1]
 
@@ -338,7 +338,7 @@ class ClassLoader(ihooks.ModuleLoader):
                     if len(external_name_parts) > 1 and this_class_module != external_class_module:
 
                         external_module_name = ".".join(external_class_module)
-                        print "* Importing", external_module_name
+                        #print "* Importing", external_module_name
                         obj = __import__(external_module_name, global_names, {}, [])
                         global_names[external_name_parts[0]] = obj
 
@@ -351,7 +351,7 @@ class ClassLoader(ihooks.ModuleLoader):
                             # Either insert this name before the current class's
                             # name.
 
-                            print "* Inserting", external_class_name
+                            #print "* Inserting", external_class_name
                             class_file_init_index.insert(this_class_name_index, external_class_name)
 
                         except ValueError:
@@ -359,7 +359,7 @@ class ClassLoader(ihooks.ModuleLoader):
                             # Or add this name in anticipation of the current
                             # class's name appearing.
 
-                            print "* Including", external_class_name
+                            #print "* Including", external_class_name
                             class_file_init_index.append(external_class_name)
 
                 # Add this class name to the initialisation index.
@@ -370,10 +370,10 @@ class ClassLoader(ihooks.ModuleLoader):
 
             # Finally, call __clinit__ methods for all relevant classes.
 
-            print "** Initialisation order", class_file_init_index
+            #print "** Initialisation order", class_file_init_index
             for class_name in class_file_init_index:
                 cls, class_file = class_file_init[class_name]
-                print "**", cls, class_file
+                #print "**", cls, class_file
                 if hasattr(cls, "__clinit__"):
                     eval(cls.__clinit__.func_code, global_names)
 

@@ -2257,10 +2257,10 @@ class ClassTranslator:
         elif super_class_module_name == this_class_module_name:
             obj = global_names[super_class_name]
         else:
-            print "Importing", super_class_module_name, super_class_name
+            #print "Importing", super_class_module_name, super_class_name
             obj = __import__(super_class_module_name, global_names, {}, [])
             for super_class_name_part in super_class_name_parts[1:] or [super_class_name]:
-                print "*", obj, super_class_name_part
+                #print "*", obj, super_class_name_part
                 obj = getattr(obj, super_class_name_part)
         return (obj,)
 
