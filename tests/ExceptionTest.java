@@ -8,7 +8,20 @@ public class ExceptionTest {
         }
     }
 
-    public int testFinally(int x) {
+    public int testFinally(int x) throws java.lang.Exception {
+        try {
+            if (x == 0) {
+                throw new MyException();
+            } else if (x == 1) {
+                throw new MyOtherException();
+            }
+        } finally {
+            x = 1;
+        }
+        return x;
+    }
+
+    public int testCatchFinally(int x) {
         try {
             if (x == 0) {
                 throw new MyException();
