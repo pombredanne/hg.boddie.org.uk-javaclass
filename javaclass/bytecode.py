@@ -2041,13 +2041,13 @@ class ClassTranslator:
         translator.process(method, writer)
         return translator, writer
 
-    def make_method(self, real_method_name, methods, global_names, namespace):
+    def make_method(self, real_method_name, methods, global_names):
 
         """
         Make a dispatcher method with the given 'real_method_name', providing
         dispatch to the supplied type-sensitive 'methods', accessing the given
         'global_names' where necessary, and storing the new method in the
-        'namespace' provided.
+        class's namespace.
         """
 
         if real_method_name == "<init>":
@@ -2059,7 +2059,7 @@ class ClassTranslator:
 
         if len(methods) == 1:
             method, fn = methods[0]
-            namespace[method_name] = fn
+            self.namespace[method_name] = fn
             return
 
         # Write a simple bytecode dispatching mechanism.
@@ -2224,28 +2224,27 @@ class ClassTranslator:
         if method_is_static:
             fn = staticmethod(fn)
 
-        namespace[method_name] = fn
+        self.namespace[method_name] = fn
 
     def process(self, global_names):
 
         """
         Process the class, storing it in the 'global_names' dictionary provided.
-        Return a tuple containing the class and a list of external names
-        referenced by the class's methods.
+        Return a list of external names referenced by the class's methods.
         """
 
-        namespace = {}
+        self.namespace = {}
 
         # Make the fields.
 
         for field in self.class_file.fields:
             if classfile.has_flags(field.access_flags, [classfile.STATIC]):
                 field_name = str(field.get_python_name())
-                namespace[field_name] = None
+                self.namespace[field_name] = None
 
         # Make the methods.
 
-        real_methods = {}
+        self.real_methods = {}
         external_names = []
 
         for method in self.class_file.methods:
@@ -2287,13 +2286,27 @@ class ClassTranslator:
 
             # Remember the real method name and the corresponding methods produced.
 
-            if not real_methods.has_key(real_method_name):
-                real_methods[real_method_name] = []
-            real_methods[real_method_name].append((method, fn))
+            if not self.real_methods.has_key(real_method_name):
+                self.real_methods[real_method_name] = []
+            self.real_methods[real_method_name].append((method, fn))
 
             # Add the method to the class's namespace.
 
-            namespace[method_name] = fn
+            self.namespace[method_name] = fn
+
+        # Add the super class as an external name, if appropriate.
+
+        if self.class_file.super_class is not None:
+            external_names.append(self.class_file.super_class.get_python_name())
+
+        return external_names
+
+    def get_class(self, global_names):
+
+        """
+        Get the Python class representing the underlying Java class, using the
+        given 'global_names' to define dispatcher methods.
+        """
 
         # Define superclasses.
 
@@ -2301,18 +2314,18 @@ class ClassTranslator:
 
         # Define method dispatchers.
 
-        for real_method_name, methods in real_methods.items():
+        for real_method_name, methods in self.real_methods.items():
             if real_method_name != "<clinit>":
-                self.make_method(real_method_name, methods, global_names, namespace)
+                self.make_method(real_method_name, methods, global_names)
 
         # Use only the last part of the fully qualified name.
 
         full_class_name = str(self.class_file.this_class.get_python_name())
         class_name = full_class_name.split(".")[-1]
-        cls = new.classobj(class_name, bases, namespace)
+        cls = new.classobj(class_name, bases, self.namespace)
         global_names[cls.__name__] = cls
 
-        return cls, external_names
+        return cls
 
     def get_base_classes(self, global_names):
 
@@ -2323,27 +2336,20 @@ class ClassTranslator:
         tuple).
         """
 
-        original_name = str(self.class_file.super_class.get_name())
-        full_this_class_name = str(self.class_file.this_class.get_python_name())
-        this_class_name_parts = full_this_class_name.split(".")
-        this_class_module_name = ".".join(this_class_name_parts[:-1])
-        full_super_class_name = str(self.class_file.super_class.get_python_name())
-        super_class_name_parts = full_super_class_name.split(".")
-        super_class_name = super_class_name_parts[-1]
-        super_class_module_name = ".".join(super_class_name_parts[:-1])
-        if super_class_module_name == "":
-            obj = global_names[super_class_name]
-        elif super_class_module_name == this_class_module_name:
-            obj = global_names[super_class_name]
-        else:
-            #print "Importing", super_class_module_name, super_class_name
-            obj = __import__(super_class_module_name, global_names, {}, [])
-            for super_class_name_part in super_class_name_parts[1:] or [super_class_name]:
-                #print "*", obj, super_class_name_part
-                try:
-                    obj = getattr(obj, super_class_name_part)
-                except AttributeError:
-                    raise AttributeError, "Cannot find class '%s' in Java package '%s'" % (super_class_name_part, super_class_module_name)
+        super_class = self.class_file.super_class
+        if super_class is None:
+            return ()
+
+        super_class_name = super_class.get_python_name()
+        super_class_name_parts = super_class_name.split(".")
+        obj = global_names
+        for super_class_name_part in super_class_name_parts[:-1]:
+            try:
+                obj = obj[super_class_name_part].__dict__
+            except KeyError:
+                raise AttributeError, "Cannot find '%s' when referencing Java class '%s'" % (
+                    super_class_name_part, super_class_name)
+        obj = obj[super_class_name_parts[-1]]
         return (obj,)
 
     def make_varnames(self, nlocals, method_is_static=0):
@@ -2378,6 +2384,7 @@ def _isinstance(*args):
 if __name__ == "__main__":
     import sys
     import dis
+    import java.lang
     global_names = globals()
     #global_names["isinstance"] = _isinstance
     #global_names["map"] = _map
@@ -2385,6 +2392,7 @@ if __name__ == "__main__":
         f = open(filename, "rb")
         c = classfile.ClassFile(f.read())
         translator = ClassTranslator(c)
-        cls, external_names = translator.process(global_names)
+        external_names = translator.process(global_names)
+        cls = translator.get_class(global_names)
 
 # vim: tabstop=4 expandtab shiftwidth=4

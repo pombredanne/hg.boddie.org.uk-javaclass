@@ -140,6 +140,14 @@ Issues
 The test program crashes, fairly quickly under Python 2.4, too. There seems
 to be some kind of memory allocation problem.
 
+Implement better importing mechanisms so that circular module dependencies
+can be avoided. For example, when dealing with java.lang classes which
+depend on java.security classes which then inherit from java.lang.Object,
+the classes should all be imported but only initialised after no more
+importing is necessary. Since usage of external names is recorded in the
+bytecode translation process, it should be possible to reach such a
+condition definitively.
+
 Investigate better exception raising. Currently, exceptions have to be
 derived from object so that object.__new__ can be used upon them. However,
 this seems to prevent them from being raised, and they need to be wrapped
