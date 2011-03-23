@@ -33,6 +33,30 @@ def f4(data):
 def f8(data):
     return struct.unpack(">d", data[0:8])[0]
 
+def su1(value):
+    return struct.pack(">B", value)
+
+def su2(value):
+    return struct.pack(">H", value)
+
+def ss2(value):
+    return struct.pack(">h", value)
+
+def su4(value):
+    return struct.pack(">L", value)
+
+def ss4(value):
+    return struct.pack(">l", value)
+
+def ss8(value):
+    return struct.pack(">q", value)
+
+def sf4(value):
+    return struct.pack(">f", value)
+
+def sf8(value):
+    return struct.pack(">d", value)
+
 # Useful tables and constants.
 
 descriptor_base_type_mapping = {
@@ -221,6 +245,8 @@ class ClassInfo(NameUtils, PythonNameUtils):
         self.class_file = class_file
         self.name_index = u2(data[0:2])
         return data[2:]
+    def serialize(self):
+        return su2(self.name_index)
 
 class RefInfo(NameAndTypeUtils):
     def init(self, data, class_file):
@@ -228,6 +254,8 @@ class RefInfo(NameAndTypeUtils):
         self.class_index = u2(data[0:2])
         self.name_and_type_index = u2(data[2:4])
         return data[4:]
+    def serialize(self):
+        return su2(self.class_index)+su2(self.name_and_type_index)
 
 class FieldRefInfo(RefInfo, PythonNameUtils):
     def get_descriptor(self):
@@ -247,6 +275,9 @@ class NameAndTypeInfo(NameUtils, PythonNameUtils):
         self.descriptor_index = u2(data[2:4])
         return data[4:]
 
+    def serialize(self):
+        return su2(self.name_index)+su2(self.descriptor_index)
+
     def get_field_descriptor(self):
         return get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
 
@@ -259,6 +290,9 @@ class Utf8Info:
         self.length = u2(data[0:2])
         self.bytes = data[2:2+self.length]
         return data[2+self.length:]
+
+    def serialize(self):
+        return su2(self.length)+self.bytes
 
     def __str__(self):
         return self.bytes
@@ -275,6 +309,9 @@ class StringInfo:
         self.string_index = u2(data[0:2])
         return data[2:]
 
+    def serialize(self):
+        return su2(self.string_index)
+
     def __str__(self):
         return str(self.class_file.constants[self.string_index - 1])
 
@@ -289,6 +326,8 @@ class SmallNumInfo:
         self.class_file = class_file
         self.bytes = data[0:4]
         return data[4:]
+    def serialize(self):
+        return self.bytes
 
 class IntegerInfo(SmallNumInfo):
     def get_value(self):
@@ -304,6 +343,9 @@ class LargeNumInfo:
         self.high_bytes = data[0:4]
         self.low_bytes = data[4:8]
         return data[8:]
+    def serialize(self):
+        return self.high_bytes+self.low_bytes
+
 
 class LongInfo(LargeNumInfo):
     def get_value(self):
@@ -324,6 +366,10 @@ class ItemInfo(NameUtils):
         self.descriptor_index = u2(data[4:6])
         self.attributes, data = self.class_file._get_attributes(data[6:])
         return data
+    def serialize(self):
+        od = su2(self.access_flags)+su2(self.name_index)+su2(self.descriptor_index)
+        od += self.class_file._serialize_attributes(self.attributes)
+        return od
 
 class FieldInfo(ItemInfo, PythonNameUtils):
     def get_descriptor(self):
@@ -338,6 +384,8 @@ class AttributeInfo:
         self.attribute_length = u4(data[0:4])
         self.info = data[4:4+self.attribute_length]
         return data[4+self.attribute_length:]
+    def serialize(self):
+        return su4(self.attribute_length)+self.info
 
 # NOTE: Decode the different attribute formats.
 
@@ -348,6 +396,8 @@ class SourceFileAttributeInfo(AttributeInfo, NameUtils, PythonNameUtils):
         # Permit the NameUtils mix-in.
         self.name_index = self.sourcefile_index = u2(data[4:6])
         return data[6:]
+    def serialize(self):
+        return su4(self.attribute_length)+su2(self.name_index)
 
 class ConstantValueAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -359,6 +409,9 @@ class ConstantValueAttributeInfo(AttributeInfo):
 
     def get_value(self):
         return self.class_file.constants[self.constant_value_index - 1].get_value()
+
+    def serialize(self):
+        return su4(self.attribute_length)+su2(self.constant_value_index)
 
 class CodeAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -378,6 +431,13 @@ class CodeAttributeInfo(AttributeInfo):
             self.exception_table.append(exception)
         self.attributes, data = self.class_file._get_attributes(data)
         return data
+    def serialize(self):
+        od = su4(self.attribute_length)+su2(self.max_stack)+su2(self.max_locals)+su4(self.code_length)+self.code
+        od += su2(self.exception_table_length)
+        for e in self.exception_table:
+            od += e.serialize()
+        od += self.class_file._serialize_attributes(self.attributes)
+        return od
 
 class ExceptionsAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -394,6 +454,12 @@ class ExceptionsAttributeInfo(AttributeInfo):
     def get_exception(self, i):
         exception_index = self.exception_index_table[i]
         return self.class_file.constants[exception_index - 1]
+        
+    def serialize(self):
+        od = su4(self.attribute_length)+su2(self.number_of_exceptions)
+        for ei in self.exception_index_table:
+            od += su2(ei)
+        return od
 
 class InnerClassesAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -407,6 +473,12 @@ class InnerClassesAttributeInfo(AttributeInfo):
             data = inner_class.init(data, self.class_file)
             self.classes.append(inner_class)
         return data
+
+    def serialize(self):
+        od = su4(self.attribute_length)+su2(self.number_of_classes)
+        for c in self.classes:
+            od += c.serialize()
+        return od
 
 class SyntheticAttributeInfo(AttributeInfo):
     pass
@@ -423,6 +495,12 @@ class LineNumberAttributeInfo(AttributeInfo):
             data = line_number.init(data)
             self.line_number_table.append(line_number)
         return data
+        
+    def serialize(self):
+        od = su4(self.attribute_length)+su2(self.line_number_table_length)
+        for ln in self.line_number_table:
+            od += ln.serialize()
+        return od
 
 class LocalVariableAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -437,6 +515,12 @@ class LocalVariableAttributeInfo(AttributeInfo):
             self.local_variable_table.append(local_variable)
         return data
 
+    def serialize(self):
+        od = su4(self.attribute_length)+su2(self.local_variable_table_length)
+        for lv in self.local_variable_table:
+            od += lv.serialize()
+        return od
+
 class DeprecatedAttributeInfo(AttributeInfo):
     pass
 
@@ -449,6 +533,8 @@ class ExceptionInfo:
         self.handler_pc = u2(data[4:6])
         self.catch_type = u2(data[6:8])
         return data[8:]
+    def serialize(self):
+        return su2(self.start_pc)+su2(self.end_pc)+su2(self.handler_pc)+su2(self.catch_type)
 
 class InnerClassInfo(NameUtils):
     def init(self, data, class_file):
@@ -459,12 +545,17 @@ class InnerClassInfo(NameUtils):
         self.name_index = self.inner_name_index = u2(data[4:6])
         self.inner_class_access_flags = u2(data[6:8])
         return data[8:]
+    def serialize(self):
+        return su2(self.inner_class_info_index)+su2(self.outer_class_info_index)+su2(self.name_index)+su2(self.inner_class_access_flags)
 
 class LineNumberInfo:
     def init(self, data):
         self.start_pc = u2(data[0:2])
         self.line_number = u2(data[2:4])
         return data[4:]
+        
+    def serialize(self):
+        return su2(self.start_pc)+su2(self.line_number)
 
 class LocalVariableInfo(NameUtils, PythonNameUtils):
     def init(self, data, class_file):
@@ -478,6 +569,9 @@ class LocalVariableInfo(NameUtils, PythonNameUtils):
 
     def get_descriptor(self):
         return get_field_descriptor(unicode(self.class_file.constants[self.descriptor_index - 1]))
+        
+    def serialize(self):
+        return su2(self.start_pc)+su2(self.length)+su2(self.name_index)+su2(self.descriptor_index)+su2(self.index)
 
 # Exceptions.
 
@@ -500,6 +594,8 @@ class ClassFile:
         file's details.
         """
 
+        self.attribute_class_to_index = None
+        self.minorv,self.majorv = u2(s[4:]),u2(s[6:])
         self.constants, s = self._get_constants(s[8:])
         self.access_flags, s = self._get_access_flags(s)
         self.this_class, s = self._get_this_class(s)
@@ -508,6 +604,47 @@ class ClassFile:
         self.fields, s = self._get_fields(s)
         self.methods, s = self._get_methods(s)
         self.attributes, s = self._get_attributes(s)
+
+    def serialize(self):
+        od = su4(0xCAFEBABE)+su2(self.minorv)+su2(self.majorv)
+        od += self._serialize_constants()
+        od += self._serialize_access_flags()
+        od += self._serialize_this_class()
+        od += self._serialize_super_class()
+        od += self._serialize_interfaces()
+        od += self._serialize_fields()
+        od += self._serialize_methods()
+        od += self._serialize_attributes(self.attributes)
+        return od
+
+    def _encode_const(self, c):
+        od = ''
+        if isinstance(c, Utf8Info):
+            od += su1(1)
+        elif isinstance(c, IntegerInfo):
+            od += su1(3)
+        elif isinstance(c, FloatInfo):
+            od += su1(4)
+        elif isinstance(c, LongInfo):
+            od += su1(5)
+        elif isinstance(c, DoubleInfo):
+            od += su1(6)
+        elif isinstance(c, ClassInfo):
+            od += su1(7)
+        elif isinstance(c, StringInfo):
+            od += su1(8)
+        elif isinstance(c, FieldRefInfo):
+            od += su1(9)
+        elif isinstance(c, MethodRefInfo):
+            od += su1(10)
+        elif isinstance(c, InterfaceMethodRefInfo):
+            od += su1(11)
+        elif isinstance(c, NameAndTypeInfo):
+            od += su1(12)
+        else:
+            return od
+        od += c.serialize()
+        return od
 
     def _decode_const(self, s):
         tag = u1(s[0:1])
@@ -606,12 +743,24 @@ class ClassFile:
         count = u2(s[0:2])
         return self._get_constants_from_table(count, s[2:])
 
+    def _serialize_constants(self):
+        return su2(len(self.constants)+1)+"".join([self._encode_const(c) for c in self.constants])
+
     def _get_access_flags(self, s):
         return u2(s[0:2]), s[2:]
+        
+    def _serialize_access_flags(self):
+        return su2(self.access_flags)
 
     def _get_this_class(self, s):
         index = u2(s[0:2])
         return self.constants[index - 1], s[2:]
+
+    def _serialize_this_class(self):
+        return su2(self.constants.index(self.this_class)+1)
+
+    def _serialize_super_class(self):
+        return su2(self.constants.index(self.super_class)+1)
 
     def _get_super_class(self, s):
         index = u2(s[0:2])
@@ -630,17 +779,54 @@ class ClassFile:
             s = s[2:]
         return interfaces, s
 
+    def _serialize_interfaces(self):
+        return su2(len(self.interfaces))+"".join([su2(self.interfaces.index(interf)+1) for interf in self.interfaces])
+
     def _get_fields(self, s):
         number = u2(s[0:2])
         return self._get_fields_from_table(number, s[2:])
+
+    def _serialize_fields(self):
+        od = su2(len(self.fields))
+        od += "".join([f.serialize() for f in self.fields])
+        return od
 
     def _get_attributes(self, s):
         number = u2(s[0:2])
         return self._get_attributes_from_table(number, s[2:])
 
+    def _serialize_attributes(self, attrs):
+        od = su2(len(attrs))
+        if len(attrs) == 0: return od
+        if self.attribute_class_to_index == None:
+            self.attribute_class_to_index = {}
+            attr_names_to_class = {"SourceFile":SourceFileAttributeInfo, "ConstantValue":ConstantValueAttributeInfo, 
+                            "Code":CodeAttributeInfo, "Exceptions":ExceptionsAttributeInfo,
+                            "InnerClasses":InnerClassesAttributeInfo, "Synthetic":SyntheticAttributeInfo,
+                            "LineNumberTable":LineNumberAttributeInfo, "LocalVariableTable":LocalVariableAttributeInfo, 
+                            "Deprecated":DeprecatedAttributeInfo}
+            index = 0
+            for c in self.constants:
+                index += 1
+                if isinstance(c, Utf8Info) and str(c) in attr_names_to_class.keys():
+                    self.attribute_class_to_index[attr_names_to_class[str(c)]]=index
+        for attribute in attrs:
+            for (classtype,name_index) in self.attribute_class_to_index.iteritems():
+                if isinstance(attribute, classtype):
+                    od += su2(name_index)
+                    break
+            od += attribute.serialize()
+        return od
+
     def _get_methods(self, s):
         number = u2(s[0:2])
         return self._get_methods_from_table(number, s[2:])
+
+    def _serialize_methods(self):
+        od = su2(len(self.methods))
+        od += "".join([m.serialize() for m in self.methods])
+        return od
+
 
 if __name__ == "__main__":
     import sys
