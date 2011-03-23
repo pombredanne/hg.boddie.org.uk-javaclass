@@ -4,17 +4,21 @@ involved in the use of this software.
 Installation
 ------------
 
-Usually, I issue this command first:
+To build the software, perhaps as part of a packaging process, you can run the
+following command:
 
   python setup.py build
 
-The following should, in any case, be sufficient:
+To directly install the software in a system-wide location, you can run the
+following command:
 
   python setup.py install
 
-I don't think distutils supports uninstall, but the installation just adds
-the java and javaclass packages to your site-packages directory and the
-runclass.py program to the same bin directory that python resides in.
+The installation adds the java and javaclass packages to your site-packages
+directory and the runclass.py program to the same bin directory that python
+resides in. However, it is arguably preferable to make an operating system
+package for the software and use the system's package manager to install and
+potentially uninstall the software.
 
 Testing
 -------
@@ -22,6 +26,25 @@ Testing
 It should be possible to just run the test.py program and see the results:
 
   python test.py
+
+Contact, Copyright and Licence Information
+------------------------------------------
+
+The current Web page for javaclass at the time of release is:
+
+http://www.boddie.org.uk/python/javaclass.html
+
+Copyright and licence information can be found in the docs directory - see
+docs/COPYING.txt, docs/lgpl-3.0.txt and docs/gpl-3.0.txt for more information.
+
+Dependencies
+------------
+
+Python              Tested with Python 2.3, although javaclass.classfile
+                    should work on any recent Python 2.x release.
+
+A Java toolchain    Tested with whichever Sun JDK for Java release was current
+                    in 2005. ;-)
 
 Class Search Paths
 ------------------
@@ -162,13 +185,19 @@ exception's handler.
 Consider nicer ways of writing the method names in Python, perhaps using a
 function which takes the individual parameter types as arguments.
 
+New in javaclass 0.2 (Changes since javaclass 0.1)
+--------------------------------------------------------
+
+  * Added Braden Thomas' class file serialisation patches.
+  * Relicensed under the LGPL version 3 or later.
+
 Release Procedures
 ------------------
 
 Update the javaclass/__init__.py __version__ attribute.
 Update the release notes (see above).
+Update the setup.py and PKG-INFO files.
 Check the setup.py file and ensure that all package directories are
 mentioned.
 Tag, export.
-Rename ClassFile to javaclass (and add the release to the directory name).
 Archive, upload.
