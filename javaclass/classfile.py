@@ -383,6 +383,7 @@ class ItemInfo(NameUtils):
         self.descriptor_index = u2(data[4:6])
         self.attributes, data = self.class_file._get_attributes(data[6:])
         return data
+
     def serialize(self):
         od = su2(self.access_flags)+su2(self.name_index)+su2(self.descriptor_index)
         od += self.class_file._serialize_attributes(self.attributes)
@@ -401,6 +402,7 @@ class AttributeInfo:
         self.attribute_length = u4(data[0:4])
         self.info = data[4:4+self.attribute_length]
         return data[4+self.attribute_length:]
+
     def serialize(self):
         return su4(self.attribute_length)+self.info
 
@@ -413,6 +415,7 @@ class SourceFileAttributeInfo(AttributeInfo, NameUtils, PythonNameUtils):
         # Permit the NameUtils mix-in.
         self.name_index = self.sourcefile_index = u2(data[4:6])
         return data[6:]
+
     def serialize(self):
         return su4(self.attribute_length)+su2(self.name_index)
 
@@ -448,6 +451,7 @@ class CodeAttributeInfo(AttributeInfo):
             self.exception_table.append(exception)
         self.attributes, data = self.class_file._get_attributes(data)
         return data
+
     def serialize(self):
         od = su4(self.attribute_length)+su2(self.max_stack)+su2(self.max_locals)+su4(self.code_length)+self.code
         od += su2(self.exception_table_length)
@@ -562,41 +566,56 @@ class DeprecatedAttributeInfo(AttributeInfo):
 class VerificationTypeInfo(object):
     def __init__(self, tag):
         self.tag = tag
+
     def init(self, data, class_file):
         self.class_file = class_file
         tag = u1(data[0:1])
         assert(tag == self.tag)
         return data[1:]
+
     def serialize(self):
         return su1(self.tag)
+
 class TopVariableInfo(VerificationTypeInfo):
     TAG = 0
+
 class IntegerVariableInfo(VerificationTypeInfo):
     TAG = 1
+
 class FloatVariableInfo(VerificationTypeInfo):
     TAG = 2
+
 class DoubleVariableInfo(VerificationTypeInfo):
     TAG = 3
+
 class LongVariableInfo(VerificationTypeInfo):
     TAG = 4
+
 class NullVariableInfo(VerificationTypeInfo):
     TAG = 5
+
 class UninitializedThisVariableInfo(VerificationTypeInfo):
     TAG = 6
+
 class ObjectVariableInfo(VerificationTypeInfo):
     TAG = 7
+
     def init(self, data, class_file):
         data = super(ObjectVariableInfo, self).init(data, class_file)
         self.cpool_index = u2(data)
         return data[2:]
+
     def serialize(self):
         return super(ObjectVariableInfo, self).serialize() + su2(self.cpool_index)
+
 class UninitializedVariableInfo(VerificationTypeInfo):
     TAG = 8
+
     def init(self, data, class_file):
         data = super(UninitializedVariableInfo, self).init(data, class_file)
         self.offset = u2(data)
         return data[2:]
+
     def serialize(self):
         return super(UninitializedVariableInfo, self).serialize() + su2(self.offset)
 
@@ -605,77 +624,95 @@ VARIABLE_INFO_CLASSES = (TopVariableInfo, IntegerVariableInfo, FloatVariableInfo
                          ObjectVariableInfo, UninitializedVariableInfo)
 VARIABLE_INFO_TAG_MAP = dict([(cls.TAG, cls) for cls in VARIABLE_INFO_CLASSES])
 
-# Exception
+# Exception.
+
 class UnknownVariableInfo:
     def __init__(self, tag):
         self.tag = tag
+
     def __str__(self):
         return repr(self.tag)
 
 def create_verification_type_info(data):
-    # Does not consume data, just does lookahead
+    # Does not consume data, just does lookahead.
     tag = u1(data[0:1])
     if tag in VARIABLE_INFO_TAG_MAP:
         return VARIABLE_INFO_TAG_MAP[tag](tag)
     else:
         raise UnknownVariableInfo, tag
 
-
 class StackMapFrame(object):
     def __init__(self, frame_type):
         self.frame_type = frame_type
+
     def init(self, data, class_file):
         self.class_file = class_file
         frame_type = u1(data[0:1])
         assert(frame_type == self.frame_type)
         return data[1:]
+
     def serialize(self):
         return su1(self.frame_type)
+
 class SameFrame(StackMapFrame):
     TYPE_LOWER = 0
     TYPE_UPPER = 63
+
 class SameLocals1StackItemFrame(StackMapFrame):
     TYPE_LOWER = 64
     TYPE_UPPER = 127
+
     def init(self, data, class_file):
         data = super(SameLocals1StackItemFrame, self).init(data, class_file)
         self.offset_delta = self.frame_type - 64
         self.stack = [create_verification_type_info(data)]
         return self.stack[0].init(data, class_file)
+
     def serialize(self):
         return super(SameLocals1StackItemFrame, self).serialize()+self.stack[0].serialize()
+
 class SameLocals1StackItemFrameExtended(StackMapFrame):
     TYPE_LOWER = 247
     TYPE_UPPER = 247
+
     def init(self, data, class_file):
         data = super(SameLocals1StackItemFrameExtended, self).init(data, class_file)
         self.offset_delta = u2(data[0:2])
         data = data[2:]
         self.stack = [create_verification_type_info(data)]
         return self.stack[0].init(data, class_file)
+
     def serialize(self):
         return super(SameLocals1StackItemFrameExtended, self).serialize()+su2(self.offset_delta)+self.stack[0].serialize()
+
 class ChopFrame(StackMapFrame):
     TYPE_LOWER = 248
     TYPE_UPPER = 250
+
     def init(self, data, class_file):
         data = super(ChopFrame, self).init(data, class_file)
         self.offset_delta = u2(data[0:2])
         return data[2:]
+
     def serialize(self):
         return super(ChopFrame, self).serialize()+su2(self.offset_delta)
+
 class SameFrameExtended(StackMapFrame):
     TYPE_LOWER = 251
     TYPE_UPPER = 251
+
     def init(self, data, class_file):
         data = super(SameFrameExtended, self).init(data, class_file)
         self.offset_delta = u2(data[0:2])
         return data[2:]
+
     def serialize(self):
         return super(SameFrameExtended, self).serialize()+su2(self.offset_delta)
+
 class AppendFrame(StackMapFrame):
     TYPE_LOWER = 252
     TYPE_UPPER = 254
+
     def init(self, data, class_file):
         data = super(AppendFrame, self).init(data, class_file)
         self.offset_delta = u2(data[0:2])
@@ -687,13 +724,16 @@ class AppendFrame(StackMapFrame):
             data = info.init(data, class_file)
             self.locals.append(info)
         return data
+
     def serialize(self):
         od = super(AppendFrame, self).serialize()+su2(self.offset_delta)
         od += "".join([l.serialize() for l in self.locals])
         return od
+
 class FullFrame(StackMapFrame):
     TYPE_LOWER = 255
     TYPE_UPPER = 255
+
     def init(self, data, class_file):
         data = super(FullFrame, self).init(data, class_file)
         self.offset_delta = u2(data[0:2])
@@ -712,6 +752,7 @@ class FullFrame(StackMapFrame):
             data = stack_item.init(data, class_file)
             self.stack.append(stack_item)
         return data
+
     def serialize(self):
         od = super(FullFrame, self).serialize()+su2(self.offset_delta)+su2(len(self.locals))
         od += "".join([l.serialize() for l in self.locals])
@@ -722,7 +763,8 @@ class FullFrame(StackMapFrame):
 FRAME_CLASSES = (SameFrame, SameLocals1StackItemFrame, SameLocals1StackItemFrameExtended,
                  ChopFrame, SameFrameExtended, AppendFrame, FullFrame)
 
-# Exception
+# Exception.
+
 class UnknownStackFrame:
     def __init__(self, frame_type):
         self.frame_type = frame_type
@@ -730,7 +772,7 @@ class UnknownStackFrame:
         return repr(self.frame_type)
 
 def create_stack_frame(data):
-    # Does not consume data, just does lookahead
+    # Does not consume data, just does lookahead.
     frame_type = u1(data[0:1])
     for cls in FRAME_CLASSES:
         if frame_type >= cls.TYPE_LOWER and frame_type <= cls.TYPE_UPPER:
@@ -749,11 +791,11 @@ class StackMapTableAttributeInfo(AttributeInfo):
             data = frame.init(data, class_file)
             self.entries.append(frame)
         return data
+
     def serialize(self):
         od = su4(self.attribute_length)+su2(len(self.entries))
         od += "".join([e.serialize() for e in self.entries])
         return od
-
 
 class EnclosingMethodAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -762,9 +804,9 @@ class EnclosingMethodAttributeInfo(AttributeInfo):
         self.class_index = u2(data[4:6])
         self.method_index = u2(data[6:8])
         return data[8:]
+
     def serialize(self):
         return su4(self.attribute_length)+su2(self.class_index)+su2(self.method_index)
-
 
 class SignatureAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -772,9 +814,9 @@ class SignatureAttributeInfo(AttributeInfo):
         self.attribute_length = u4(data[0:4])
         self.signature_index = u2(data[4:6])
         return data[6:]
+
     def serialize(self):
         return su4(self.attribute_length)+su2(self.signature_index)
-
 
 class SourceDebugExtensionAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -782,49 +824,60 @@ class SourceDebugExtensionAttributeInfo(AttributeInfo):
         self.attribute_length = u4(data[0:4])
         self.debug_extension = data[4:(4 + self.attribute_length)]
         return data[(4+ self.attribute_length):]
+
     def serialize(self):
         return su4(self.attribute_length)+self.debug_extension
-
 
 class ElementValue(object):
     def __init__(self, tag):
         self.tag = tag
+
     def init(self, data, class_file):
         self.class_file = class_file
         tag = chr(u1(data[0:1]))
         assert(tag == self.tag)
         return data[1:]
+
     def serialize(self):
         return su1(ord(self.tag))
+
 class ConstValue(ElementValue):
     def init(self, data, class_file):
         data = super(ConstValue, self).init(data, class_file)
         self.const_value_index = u2(data[0:2])
         return data[2:]
+
     def serialize(self):
         return super(ConstValue, self).serialize()+su2(self.const_value_index)
+
 class EnumConstValue(ElementValue):
     def init(self, data, class_file):
         data = super(EnumConstValue, self).init(data, class_file)
         self.type_name_index = u2(data[0:2])
         self.const_name_index = u2(data[2:4])
         return data[4:]
+
     def serialize(self):
         return super(EnumConstValue, self).serialize()+su2(self.type_name_index)+su2(self.const_name_index)
+
 class ClassInfoValue(ElementValue):
     def init(self, data, class_file):
         data = super(ClassInfoValue, self).init(data, class_file)
         self.class_info_index = u2(data[0:2])
         return data[2:]
+
     def serialize(self):
         return super(ClassInfoValue, self).serialize()+su2(self.class_info_index)
+
 class AnnotationValue(ElementValue):
     def init(self, data, class_file):
         data = super(AnnotationValue, self).init(data, class_file)
         self.annotation_value = Annotation()
         return self.annotation_value.init(data, class_file)
+
     def serialize(self):
         return super(AnnotationValue, self).serialize()+self.annotation_value.serialize()
+
 class ArrayValue(ElementValue):
     def init(self, data, class_file):
         data = super(ArrayValue, self).init(data, class_file)
@@ -836,11 +889,14 @@ class ArrayValue(ElementValue):
             data = element_value.init(data, class_file)
             self.values.append(element_value)
         return data
+
     def serialize(self):
         od = super(ArrayValue, self).serialize()+su2(len(self.values))
         od += "".join([v.serialize() for v in self.values])
         return od
-# Exception
+
+# Exception.
+
 class UnknownElementValue:
     def __init__(self, tag):
         self.tag = tag
@@ -861,7 +917,6 @@ def create_element_value(data):
         return ArrayValue(tag)
     else:
         raise UnknownElementValue, tag
-    
 
 class Annotation(object):
     def init(self, data, class_file):
@@ -877,11 +932,11 @@ class Annotation(object):
             data = element_value.init(data, class_file)
             self.element_value_pairs.append((element_name_index, element_value))
         return data
+
     def serialize(self):
         od = su2(self.type_index)+su2(len(self.element_value_pairs))
         od += "".join([su2(evp[0])+evp[1].serialize() for evp in self.element_value_pairs])
         return od
-
 
 class RuntimeAnnotationsAttributeInfo(AttributeInfo):
     def init(self, data, class_file):
@@ -895,6 +950,7 @@ class RuntimeAnnotationsAttributeInfo(AttributeInfo):
             data = annotation.init(data, class_file)
             self.annotations.append(annotation)
         return data
+
     def serialize(self):
         od = su4(self.attribute_length)+su2(len(self.annotations))
         od += "".join([a.serialize() for a in self.annotations])
@@ -923,6 +979,7 @@ class RuntimeParameterAnnotationsAttributeInfo(AttributeInfo):
                 annotations.append(annotation)
             self.parameter_annotations.append(annotations)
         return data
+
     def serialize(self):
         od = su4(self.attribute_length)+su1(len(self.parameter_annotations))
         for pa in self.parameter_annotations:
@@ -943,9 +1000,9 @@ class AnnotationDefaultAttributeInfo(AttributeInfo):
         data = data[4:]
         self.default_value = create_element_value(data)
         return self.default_value.init(data, class_file)
+
     def serialize(self):
         return su4(self.attribute_length)+self.default_value.serialize()
-
 
 # Child classes of the attribute information classes.
 
@@ -956,6 +1013,7 @@ class ExceptionInfo:
         self.handler_pc = u2(data[4:6])
         self.catch_type = u2(data[6:8])
         return data[8:]
+
     def serialize(self):
         return su2(self.start_pc)+su2(self.end_pc)+su2(self.handler_pc)+su2(self.catch_type)
 
@@ -968,6 +1026,7 @@ class InnerClassInfo(NameUtils):
         self.name_index = self.inner_name_index = u2(data[4:6])
         self.inner_class_access_flags = u2(data[6:8])
         return data[8:]
+
     def serialize(self):
         return su2(self.inner_class_info_index)+su2(self.outer_class_info_index)+su2(self.name_index)+su2(self.inner_class_access_flags)
 
