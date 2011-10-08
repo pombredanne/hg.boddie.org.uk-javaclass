@@ -185,8 +185,16 @@ exception's handler.
 Consider nicer ways of writing the method names in Python, perhaps using a
 function which takes the individual parameter types as arguments.
 
+New in javaclass 0.3 (Changes since javaclass 0.2)
+--------------------------------------------------
+
+  * Merged David Drysdale's support for Java 1.5 and 1.6 class files, together
+    with more test cases, some bug fixes, and support for successful round
+    trips of class files (so that serialisation of loaded class files should
+    provide the same data as that found in the input files).
+
 New in javaclass 0.2 (Changes since javaclass 0.1)
---------------------------------------------------------
+--------------------------------------------------
 
   * Added Braden Thomas' class file serialisation patches.
   * Relicensed under the LGPL version 3 or later.
